@@ -1,0 +1,18 @@
+﻿*** Begin Patch
+*** Update File: client/src/pages/Dashboard.tsx
+@@
+-  if (authLoading || isLoading) {
+-    return (
+-      <div className=\"min-h-screen bg-[#F8FAFC] flex items-center justify-center\">
+-        <Loader2 className=\"w-8 h-8 animate-spin text-[#6366F1]\" />
+-      </div>
+-    );
+-  }
++  if (authLoading || isLoading) {
++    return (
++      <div className=\"min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex items-center justify-center\">
++        <Loader2 className=\"w-8 h-8 animate-spin text-[#6366F1]\" />
++      </div>
++    );
++  }
+*** End Patch

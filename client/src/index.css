@@ -1,0 +1,574 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* TaskFlow CRM Design System */
+:root {
+  /* Brand Colors */
+  --tf-primary: #6366F1;
+  --tf-primary-hover: #4F46E5;
+  --tf-primary-light: #EEF2FF;
+  --tf-accent: #8B5CF6;
+  --tf-accent-light: #F5F3FF;
+
+  /* Dark Surfaces */
+  --tf-dark: #0F172A;
+  --tf-dark-secondary: #1E293B;
+  --tf-dark-tertiary: #334155;
+
+  /* Light Surfaces */
+  --tf-bg: #F8FAFC;
+  --tf-card: #FFFFFF;
+
+  /* Text */
+  --tf-text: #0F172A;
+  --tf-text-secondary: #475569;
+  --tf-text-muted: #94A3B8;
+  --tf-text-light: #CBD5E1;
+
+  /* Borders */
+  --tf-border: #E2E8F0;
+  --tf-border-light: #F1F5F9;
+
+  /* Status */
+  --tf-success: #10B981;
+  --tf-warning: #F59E0B;
+  --tf-danger: #EF4444;
+
+  /* Label Colors */
+  --label-green: #10B981;
+  --label-green-light: #10B98133;
+  --label-yellow: #F59E0B;
+  --label-yellow-light: #F59E0B33;
+  --label-orange: #F97316;
+  --label-orange-light: #F9731633;
+  --label-red: #EF4444;
+  --label-red-light: #EF444433;
+  --label-purple: #8B5CF6;
+  --label-purple-light: #8B5CF633;
+  --label-blue: #3B82F6;
+  --label-blue-light: #3B82F633;
+  --label-sky: #06B6D4;
+  --label-sky-light: #06B6D433;
+  --label-lime: #84CC16;
+  --label-lime-light: #84CC1633;
+  --label-pink: #EC4899;
+  --label-pink-light: #EC489933;
+  --label-black: #1E293B;
+  --label-black-light: #1E293B33;
+
+  /* Due Date Status */
+  --due-overdue: #EF4444;
+  --due-soon: #F59E0B;
+  --due-complete: #10B981;
+
+  /* Base Theme */
+  --radius: 0.5rem;
+  --background: oklch(0.98 0.002 250);
+  --foreground: oklch(0.15 0.02 250);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.02 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.02 250);
+  --primary: oklch(0.55 0.2 265);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.005 250);
+  --secondary-foreground: oklch(0.35 0.02 250);
+  --muted: oklch(0.95 0.005 250);
+  --muted-foreground: oklch(0.45 0.02 250);
+  --accent: oklch(0.95 0.005 250);
+  --accent-foreground: oklch(0.15 0.02 250);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.005 250);
+  --input: oklch(0.9 0.005 250);
+  --ring: oklch(0.55 0.2 265);
+  --sidebar: oklch(0.12 0.02 250);
+  --sidebar-foreground: oklch(0.9 0.005 250);
+  --sidebar-accent: oklch(0.2 0.02 250);
+  --sidebar-accent-foreground: oklch(0.9 0.005 250);
+  --sidebar-border: oklch(0.25 0.02 250);
+  --sidebar-ring: oklch(0.55 0.2 265);
+  --sidebar-primary: oklch(0.55 0.2 265);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --chart-1: oklch(0.55 0.2 265);
+  --chart-2: oklch(0.6 0.18 290);
+  --chart-3: oklch(0.6 0.15 170);
+  --chart-4: oklch(0.65 0.15 50);
+  --chart-5: oklch(0.55 0.2 340);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 1280px;
+    }
+  }
+
+  /* TaskFlow List */
+  .trello-list {
+    @apply bg-gradient-to-b from-white to-slate-50/60 rounded-xl w-64 flex-shrink-0 flex flex-col max-h-[calc(100vh-120px)] border border-slate-200/70;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition: all 0.18s ease;
+  }
+
+  /* Freshdesk-style ticket list */
+  .ticket-list {
+    @apply bg-white rounded-2xl w-[320px] flex-shrink-0 flex flex-col max-h-[calc(100vh-140px)] border border-slate-200 shadow-sm;
+  }
+
+  .dark .ticket-list {
+    @apply bg-slate-900 border-slate-800 shadow-none;
+  }
+
+  .ticket-list-header {
+    @apply px-4 py-3 flex items-center justify-between border-b border-slate-200 bg-slate-50/70 rounded-t-2xl;
+  }
+
+  .dark .ticket-list-header {
+    @apply border-slate-800 bg-slate-900;
+  }
+
+  .ticket-list-title {
+    @apply font-semibold text-slate-900 text-sm;
+  }
+
+  .dark .ticket-list-title {
+    @apply text-slate-100;
+  }
+
+  .ticket-row {
+    @apply bg-white border border-slate-200 rounded-2xl p-3 mb-3 hover:shadow-md hover:border-slate-300 transition cursor-pointer;
+  }
+
+  .dark .ticket-row {
+    @apply bg-slate-900 border-slate-800 hover:border-indigo-500/60 hover:shadow-[0_8px_30px_rgb(79_70_229/0.18)];
+  }
+
+  .ticket-avatar {
+    @apply h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600 flex-shrink-0;
+  }
+
+  .dark .ticket-avatar {
+    @apply bg-slate-800 text-slate-200;
+  }
+
+  .ticket-title {
+    @apply text-sm font-semibold text-slate-900 truncate;
+  }
+
+  .dark .ticket-title {
+    @apply text-slate-100;
+  }
+
+  .ticket-subtitle {
+    @apply text-xs text-slate-500 truncate;
+  }
+
+  .dark .ticket-subtitle {
+    @apply text-slate-400;
+  }
+
+  .ticket-booking-meta {
+    @apply mt-2 flex flex-wrap gap-1.5;
+  }
+
+  .ticket-booking-chip {
+    @apply text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200;
+  }
+
+  .ticket-booking-chip.is-ok {
+    @apply bg-emerald-50 text-emerald-700 border-emerald-200;
+  }
+
+  .ticket-booking-chip.is-missing {
+    @apply bg-amber-50 text-amber-700 border-amber-200;
+  }
+
+  .dark .ticket-booking-chip {
+    @apply bg-slate-800 text-slate-200 border-slate-700;
+  }
+
+  .dark .ticket-booking-chip.is-ok {
+    @apply bg-emerald-900/50 text-emerald-200 border-emerald-700/60;
+  }
+
+  .dark .ticket-booking-chip.is-missing {
+    @apply bg-amber-900/50 text-amber-200 border-amber-700/60;
+  }
+
+  .ticket-covering-meta {
+    @apply mt-1.5 flex flex-wrap gap-1.5;
+  }
+
+  .ticket-covering-chip {
+    @apply text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200;
+  }
+
+  .ticket-covering-chip.is-requested {
+    @apply bg-sky-50 text-sky-700 border-sky-200;
+  }
+
+  .ticket-covering-chip.is-paid {
+    @apply bg-emerald-50 text-emerald-700 border-emerald-200;
+  }
+
+  .ticket-covering-chip.is-invoiced {
+    @apply bg-violet-50 text-violet-700 border-violet-200;
+  }
+
+  .dark .ticket-covering-chip {
+    @apply bg-slate-800 text-slate-200 border-slate-700;
+  }
+
+  .dark .ticket-covering-chip.is-requested {
+    @apply bg-sky-900/50 text-sky-200 border-sky-700/60;
+  }
+
+  .dark .ticket-covering-chip.is-paid {
+    @apply bg-emerald-900/50 text-emerald-200 border-emerald-700/60;
+  }
+
+  .dark .ticket-covering-chip.is-invoiced {
+    @apply bg-violet-900/50 text-violet-200 border-violet-700/60;
+  }
+
+  .ticket-status {
+    @apply text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full;
+  }
+
+  .dark .ticket-status {
+    @apply text-indigo-100 bg-indigo-500/20;
+  }
+
+  .ticket-priority {
+    @apply text-[11px] font-semibold px-2 py-0.5 rounded-full;
+  }
+
+  .dark .ticket-priority {
+    @apply bg-slate-800 text-slate-100;
+  }
+
+  .ticket-due {
+    @apply text-[11px] font-semibold px-2 py-1 rounded-full flex items-center gap-1;
+  }
+
+  .dark .ticket-due {
+    @apply bg-slate-800 text-slate-100;
+  }
+
+  .trello-list:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Drop zone indicator - highlight when card/list is being dragged over */
+  .trello-list.drop-zone-active {
+    background: linear-gradient(to bottom, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06), inset 0 0 0 2px rgba(99, 102, 241, 0.2);
+  }
+
+  .ticket-list.drop-zone-active {
+    background: linear-gradient(to bottom, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06), inset 0 0 0 2px rgba(99, 102, 241, 0.2);
+  }
+
+  .trello-list-header {
+    @apply p-3 px-3.5 flex items-center justify-between;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(255,255,255,0.5));
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+  }
+
+  .trello-list-title {
+    @apply font-semibold text-[#0F172A] text-sm tracking-tight;
+  }
+
+  /* TaskFlow Card */
+  .trello-card {
+    @apply bg-white rounded-lg cursor-pointer transition-all duration-200 border border-slate-200/70 px-3 py-2.5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .trello-card:hover {
+    @apply border-indigo-300/60 shadow-lg;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Card drag state */
+  .trello-card:active {
+    transform: scale(0.98);
+  }
+
+  .trello-card-title {
+    @apply text-sm text-slate-900 leading-5 font-medium tracking-tight;
+  }
+
+  /* Labels */
+  .card-label {
+    @apply h-2 rounded-full;
+  }
+
+  .card-label-expanded {
+    @apply h-5 rounded-full px-3 text-xs font-medium flex items-center;
+  }
+
+  .label-green { background-color: var(--label-green); }
+  .label-yellow { background-color: var(--label-yellow); }
+  .label-orange { background-color: var(--label-orange); }
+  .label-red { background-color: var(--label-red); }
+  .label-purple { background-color: var(--label-purple); }
+  .label-blue { background-color: var(--label-blue); }
+  .label-sky { background-color: var(--label-sky); }
+  .label-lime { background-color: var(--label-lime); }
+  .label-pink { background-color: var(--label-pink); }
+  .label-black { background-color: var(--label-black); }
+
+  /* Due Date Badges */
+  .due-badge {
+    @apply text-xs px-2 py-1 rounded-full flex items-center gap-1 font-medium;
+  }
+
+  .due-overdue {
+    @apply bg-red-50 text-red-600 border border-red-200;
+  }
+
+  .due-soon {
+    @apply bg-amber-50 text-amber-700 border border-amber-200;
+  }
+
+  .due-complete {
+    @apply bg-emerald-50 text-emerald-600 border border-emerald-200;
+  }
+
+  .due-default {
+    @apply bg-slate-100 text-slate-500 border border-slate-200;
+  }
+
+  /* Checklist Progress */
+  .checklist-progress {
+    @apply h-1.5 bg-slate-200 rounded-full overflow-hidden;
+  }
+
+  .checklist-progress-bar {
+    @apply h-full bg-[#6366F1] transition-all duration-300 rounded-full;
+  }
+
+  .checklist-progress-complete {
+    @apply bg-emerald-500;
+  }
+
+  /* Board Header */
+  .board-header {
+    @apply h-14 px-4 flex items-center justify-between backdrop-blur-md;
+    background-color: rgba(15, 23, 42, 0.65);
+  }
+
+  .board-title {
+    @apply text-lg font-bold text-white;
+  }
+
+  /* Button Styles */
+  .trello-btn {
+    @apply px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200;
+  }
+
+  .trello-btn-primary {
+    @apply bg-[#6366F1] text-white hover:bg-[#4F46E5] shadow-sm;
+  }
+
+  .trello-btn-secondary {
+    @apply bg-slate-100 text-[#0F172A] hover:bg-slate-200;
+  }
+
+  .trello-btn-subtle {
+    @apply bg-transparent text-[#475569] hover:bg-slate-100;
+  }
+
+  /* Add Card/List Button */
+  .add-card-btn {
+    @apply w-full text-left px-3 py-2.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition-all duration-200 flex items-center gap-1.5 font-medium;
+  }
+
+  .add-card-btn:hover {
+    @apply text-indigo-600 bg-indigo-50;
+  }
+
+  .add-list-btn {
+    @apply w-72 flex-shrink-0 px-4 py-3.5 rounded-xl text-sm text-white/90 hover:bg-white/20 transition-all duration-200 flex items-center gap-2 font-medium;
+    background-color: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .add-list-btn:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+  }
+
+  /* Member Avatar */
+  .member-avatar {
+    @apply w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold;
+    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+    color: white;
+  }
+
+  .member-avatar-sm {
+    @apply w-5 h-5 text-[10px];
+  }
+
+  .member-avatar-lg {
+    @apply w-8 h-8 text-sm;
+  }
+
+  /* Card Badge */
+  .card-badge {
+    @apply flex items-center gap-1 text-xs text-[#94A3B8] font-medium;
+  }
+
+  .card-badge-icon {
+    @apply w-3.5 h-3.5;
+  }
+
+  /* Comment Styles */
+  .comment-item {
+    @apply flex items-start gap-3;
+  }
+
+  .comment-avatar {
+    @apply w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-semibold flex-shrink-0;
+    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  }
+
+  .comment-bubble {
+    @apply bg-white rounded-xl p-3.5 text-sm text-[#0F172A] border border-[#E2E8F0];
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    word-break: break-word;
+  }
+
+  .comment-timestamp {
+    @apply text-xs text-[#94A3B8];
+  }
+
+  /* Sidebar Navigation */
+  .sidebar-nav {
+    @apply w-64 bg-[#0F172A] text-white h-full;
+  }
+
+  .sidebar-nav-item {
+    @apply px-3 py-2 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-2.5 text-sm;
+  }
+
+  .sidebar-nav-item-active {
+    @apply bg-white/10;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.2s ease-out;
+}
