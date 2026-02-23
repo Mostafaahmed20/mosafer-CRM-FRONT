@@ -365,8 +365,8 @@ export default function TicketsInbox() {
     try {
       await Promise.all(
         selected.map(async (t) => {
-          await cardApi.update(t.board._id, t.list._id, t.card._id, { status: "Completed", dueComplete: true });
-          updateTicket(t.card._id, { status: "Completed", dueComplete: true });
+          await cardApi.update(t.board._id, t.list._id, t.card._id, { dueComplete: true });
+          updateTicket(t.card._id, { dueComplete: true });
         })
       );
       toast.success(restricted > 0 ? `Marked as done (${restricted} skipped)` : "Marked as done");
@@ -397,10 +397,9 @@ export default function TicketsInbox() {
     }
     try {
       await cardApi.update(ticket.board._id, ticket.list._id, ticket.card._id, {
-        status: "Completed",
         dueComplete: true,
       });
-      updateTicket(ticket.card._id, { status: "Completed", dueComplete: true });
+      updateTicket(ticket.card._id, { dueComplete: true });
       toast.success("Marked as done");
     } catch (error) {
       toast.error("Failed to mark done");

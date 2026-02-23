@@ -18,6 +18,262 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+export type CustomerDecisionRole =
+  | "Group Admin"
+  | "CEO"
+  | "Manager"
+  | "Decision Maker"
+  | "Owner"
+  | "Operations";
+
+export type CustomerTag = "VIP" | "Risky" | "Prepaid" | "Blacklist Watch";
+
+export type AgencyContactRole =
+  | "CEO"
+  | "Manager"
+  | "Operations"
+  | "Accounting"
+  | "Sales"
+  | "Reservations"
+  | "Owner"
+  | "Other";
+
+export type CustomerContact = {
+  id: string;
+  name: string;
+  email: string;
+  role: AgencyContactRole;
+  phone?: string;
+};
+
+export type CustomerHistoryEvent = {
+  id: string;
+  action: string;
+  at: string;
+};
+
+export type CustomerProfile = {
+  _id: string;
+  agencyName: string;
+  location: string;
+  email: string;
+  decisionRole: CustomerDecisionRole;
+  tags: CustomerTag[];
+  contacts: CustomerContact[];
+  notes?: string;
+  history: CustomerHistoryEvent[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CustomerCreateData = {
+  agencyName: string;
+  location: string;
+  email: string;
+  decisionRole: CustomerDecisionRole;
+  tags?: CustomerTag[];
+  contacts?: CustomerContact[];
+  notes?: string;
+};
+
+type CustomerUpdateData = Partial<CustomerCreateData>;
+
+const CUSTOMER_STORAGE_KEY = "crm_customers_v1";
+
+function readLocalCustomers(): CustomerProfile[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CUSTOMER_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeLocalCustomerRecord);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalCustomers(customers: CustomerProfile[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+}
+
+function localCreateCustomer(data: CustomerCreateData): CustomerProfile {
+  const now = new Date().toISOString();
+  return {
+    _id: `local_${Math.random().toString(36).slice(2, 10)}`,
+    agencyName: data.agencyName.trim(),
+    location: data.location.trim(),
+    email: data.email.trim().toLowerCase(),
+    decisionRole: data.decisionRole,
+    tags: [...(data.tags || [])],
+    contacts: [...(data.contacts || [])],
+    notes: data.notes?.trim() || "",
+    history: [
+      {
+        id: `h_${Math.random().toString(36).slice(2, 10)}`,
+        action: "Created profile",
+        at: now,
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function normalizeLocalCustomerRecord(input: any): CustomerProfile {
+  const createdAt = input?.createdAt || new Date().toISOString();
+  const updatedAt = input?.updatedAt || createdAt;
+  return {
+    _id: String(input?._id || `local_${Math.random().toString(36).slice(2, 10)}`),
+    agencyName: String(input?.agencyName || "").trim(),
+    location: String(input?.location || "").trim(),
+    email: String(input?.email || "").trim().toLowerCase(),
+    decisionRole: (input?.decisionRole || "Decision Maker") as CustomerDecisionRole,
+    tags: Array.isArray(input?.tags) ? input.tags : [],
+    contacts: Array.isArray(input?.contacts) ? input.contacts : [],
+    notes: typeof input?.notes === "string" ? input.notes : "",
+    history: Array.isArray(input?.history) ? input.history : [],
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeCustomerKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function ensureNoCustomerDuplicate(
+  customers: CustomerProfile[],
+  data: { agencyName?: string; email?: string },
+  ignoreId?: string
+) {
+  const agencyKey = data.agencyName ? normalizeCustomerKey(data.agencyName) : "";
+  const emailKey = data.email ? normalizeCustomerKey(data.email) : "";
+
+  const duplicateAgency = agencyKey
+    ? customers.find((c) => c._id !== ignoreId && normalizeCustomerKey(c.agencyName) === agencyKey)
+    : null;
+  if (duplicateAgency) {
+    throw new Error(`Agency already exists: ${duplicateAgency.agencyName}`);
+  }
+
+  const duplicateEmail = emailKey
+    ? customers.find((c) => c._id !== ignoreId && normalizeCustomerKey(c.email) === emailKey)
+    : null;
+  if (duplicateEmail) {
+    throw new Error(`Email already exists: ${duplicateEmail.email}`);
+  }
+}
+
+async function tryCustomerApi<T>(request: () => Promise<Response>, fallback: () => T | Promise<T>): Promise<T> {
+  try {
+    const response = await request();
+    if (response.status === 404 || response.status === 501) {
+      return await fallback();
+    }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      throw new Error(error.message || "Request failed");
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json();
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    const isNetworkLike =
+      message.includes("Failed to fetch") ||
+      message.includes("NetworkError") ||
+      message.includes("fetch");
+    if (isNetworkLike || !API_URL) {
+      return await fallback();
+    }
+    throw error;
+  }
+}
+
+export const customerApi = {
+  getAll: async () => {
+    return tryCustomerApi<CustomerProfile[]>(
+      () =>
+        fetch(`${API_URL}/api/customers`, {
+          headers: getAuthHeaders(),
+        }),
+      () => readLocalCustomers()
+    );
+  },
+
+  create: async (data: CustomerCreateData) => {
+    return tryCustomerApi<CustomerProfile>(
+      () =>
+        fetch(`${API_URL}/api/customers`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        }),
+      () => {
+        const customers = readLocalCustomers();
+        ensureNoCustomerDuplicate(customers, data);
+        const next = localCreateCustomer(data);
+        customers.unshift(next);
+        writeLocalCustomers(customers);
+        return next;
+      }
+    );
+  },
+
+  update: async (id: string, data: CustomerUpdateData) => {
+    return tryCustomerApi<CustomerProfile>(
+      () =>
+        fetch(`${API_URL}/api/customers/${id}`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        }),
+      () => {
+        const customers = readLocalCustomers();
+        const current = customers.find((c) => c._id === id);
+        if (!current) throw new Error("Customer profile not found");
+        ensureNoCustomerDuplicate(customers, data, id);
+        const updated: CustomerProfile = {
+          ...current,
+          agencyName: data.agencyName?.trim() ?? current.agencyName,
+          location: data.location?.trim() ?? current.location,
+          email: data.email?.trim().toLowerCase() ?? current.email,
+          decisionRole: data.decisionRole ?? current.decisionRole,
+          tags: data.tags ? [...data.tags] : current.tags,
+          contacts: data.contacts ? [...data.contacts] : current.contacts,
+          notes: data.notes !== undefined ? data.notes : current.notes,
+          updatedAt: new Date().toISOString(),
+        };
+        updated.history = [
+          ...(current.history || []),
+          {
+            id: `h_${Math.random().toString(36).slice(2, 10)}`,
+            action: "Updated profile",
+            at: updated.updatedAt,
+          },
+        ];
+        writeLocalCustomers(customers.map((c) => (c._id === id ? updated : c)));
+        return updated;
+      }
+    );
+  },
+
+  delete: async (id: string) => {
+    return tryCustomerApi<{ success: true }>(
+      () =>
+        fetch(`${API_URL}/api/customers/${id}`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }),
+      () => {
+        const customers = readLocalCustomers().filter((c) => c._id !== id);
+        writeLocalCustomers(customers);
+        return { success: true as const };
+      }
+    );
+  },
+};
+
 // Board API
 export const boardApi = {
   getAll: async () => {
@@ -34,7 +290,7 @@ export const boardApi = {
     return handleResponse(response);
   },
 
-  create: async (data: { title: string; description?: string; background?: string }) => {
+  create: async (data: { title: string; description?: string; background?: string; customerProfileId?: string }) => {
     const response = await fetch(`${API_URL}/api/boards`, {
       method: "POST",
       headers: getAuthHeaders(),

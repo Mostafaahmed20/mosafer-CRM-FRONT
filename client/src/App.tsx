@@ -16,6 +16,7 @@ import Dashboard from "./pages/Dashboard";
 import BoardView from "./pages/BoardView";
 import HotelQuoteTool from "./pages/HotelQuoteTool";
 import TicketsInbox from "./pages/TicketsInbox";
+import WorkspaceFeaturePage from "./pages/WorkspaceFeaturePage";
 
 function Router() {
   return (
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/tickets" component={TicketsInbox} />
+      <Route path="/workspace/:feature" component={WorkspaceFeaturePage} />
       <Route path="/tools/hotel-quote" component={HotelQuoteTool} />
       <Route path="/board/:id" component={BoardView} />
       <Route path="/404" component={NotFound} />
@@ -39,7 +41,7 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark">
+      <ThemeProvider defaultTheme="dark" switchable>
         <AuthProvider>
           <SocketProvider>
             <TooltipProvider>

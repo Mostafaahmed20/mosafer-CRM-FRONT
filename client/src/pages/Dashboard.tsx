@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
-import { boardApi, Board } from "@/lib/api";
+import { boardApi, Board, customerApi, CustomerProfile } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
 import { toast } from "sonner";
 import {
@@ -56,6 +56,9 @@ export default function Dashboard() {
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [selectedColor, setSelectedColor] = useState(BOARD_COLORS[0]);
   const [isCreating, setIsCreating] = useState(false);
+  const [agencyProfiles, setAgencyProfiles] = useState<CustomerProfile[]>([]);
+  const [selectedAgencyId, setSelectedAgencyId] = useState("");
+  const [isLoadingAgencyProfiles, setIsLoadingAgencyProfiles] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -66,6 +69,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (isAuthenticated) {
       loadBoards();
+      loadAgencyProfiles();
     }
   }, [isAuthenticated]);
 
@@ -85,18 +89,42 @@ export default function Dashboard() {
     }
   };
 
+  const loadAgencyProfiles = async () => {
+    try {
+      setIsLoadingAgencyProfiles(true);
+      const data = await customerApi.getAll();
+      setAgencyProfiles(data);
+    } catch {
+      setAgencyProfiles([]);
+    } finally {
+      setIsLoadingAgencyProfiles(false);
+    }
+  };
+
   const handleCreateBoard = async () => {
     if (!newBoardTitle.trim()) return;
 
     setIsCreating(true);
     try {
+      const selectedAgency = agencyProfiles.find((agency) => agency._id === selectedAgencyId);
       const newBoard = await boardApi.create({
         title: newBoardTitle.trim(),
         background: selectedColor.id,
+        customerProfileId: selectedAgency?._id,
+        description: selectedAgency
+          ? [
+              "Agency Profile",
+              `Agency: ${selectedAgency.agencyName}`,
+              `Location: ${selectedAgency.location}`,
+              `Email: ${selectedAgency.email}`,
+              `Decision Role: ${selectedAgency.decisionRole}`,
+            ].join("\n")
+          : undefined,
       }) as Board;
       setBoards([...boards, newBoard]);
       setNewBoardTitle("");
       setSelectedColor(BOARD_COLORS[0]);
+      setSelectedAgencyId("");
       setIsCreateDialogOpen(false);
       toast.success("Board created!");
       setLocation(`/board/${newBoard._id}`);
@@ -330,6 +358,36 @@ export default function Dashboard() {
                 className="border-[#E2E8F0] rounded-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 autoFocus
               />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-[#475569] dark:text-slate-400 block mb-2">
+                Agency profile (optional)
+              </label>
+              <select
+                value={selectedAgencyId}
+                onChange={(e) => {
+                  const agencyId = e.target.value;
+                  setSelectedAgencyId(agencyId);
+                  if (!newBoardTitle.trim()) {
+                    const agency = agencyProfiles.find((item) => item._id === agencyId);
+                    if (agency) setNewBoardTitle(`${agency.agencyName} - Board`);
+                  }
+                }}
+                className="w-full h-10 rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                <option value="">
+                  {isLoadingAgencyProfiles ? "Loading agencies..." : "Select an agency profile"}
+                </option>
+                {agencyProfiles.map((agency) => (
+                  <option key={agency._id} value={agency._id}>
+                    {agency.agencyName} - {agency.location} - {agency.decisionRole}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Agencies are managed in the Customers tab. Selected agency details are attached to the board description.
+              </p>
             </div>
 
             <Button
