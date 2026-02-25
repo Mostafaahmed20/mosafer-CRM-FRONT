@@ -50,6 +50,28 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+
+function resolveAttachmentUrl(url?: string) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  if (
+    raw.startsWith("http://") ||
+    raw.startsWith("https://") ||
+    raw.startsWith("//") ||
+    raw.startsWith("data:") ||
+    raw.startsWith("blob:")
+  ) {
+    return raw;
+  }
+
+  if (!API_BASE_URL) return raw;
+
+  const normalizedBase = API_BASE_URL.endsWith("/") ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const normalizedPath = raw.startsWith("/") ? raw : `/${raw}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 interface ListOption {
   _id: string;
   title: string;
@@ -1743,7 +1765,9 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                   <h3 className="font-semibold text-[#0F172A]">Attachments</h3>
                 </div>
                 <div className="ml-8 space-y-2">
-                  {card.attachments.map((attachment) => (
+                  {card.attachments.map((attachment) => {
+                    const attachmentUrl = resolveAttachmentUrl(attachment.url);
+                    return (
                     <div
                       key={attachment._id}
                       className="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 transition-colors"
@@ -1751,20 +1775,20 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                       {/* Thumbnail / Icon */}
                       {isImageType(attachment.type) ? (
                         <a
-                          href={attachment.url}
+                          href={attachmentUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-20 h-14 rounded overflow-hidden flex-shrink-0 bg-slate-100"
                         >
                           <img
-                            src={attachment.url}
+                            src={attachmentUrl}
                             alt={attachment.name}
                             className="w-full h-full object-cover"
                           />
                         </a>
                       ) : (
                         <a
-                          href={attachment.url}
+                          href={attachmentUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-20 h-14 rounded flex-shrink-0 bg-slate-100 flex items-center justify-center"
@@ -1776,7 +1800,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <a
-                          href={attachment.url}
+                          href={attachmentUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm font-medium text-[#0F172A] hover:underline truncate block"
@@ -1791,7 +1815,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                       {/* Actions */}
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <a
-                          href={attachment.url}
+                          href={attachmentUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1 rounded hover:bg-slate-200"
@@ -1808,7 +1832,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
