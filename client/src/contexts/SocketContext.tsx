@@ -73,8 +73,14 @@ export function SocketProvider({ children }: SocketProviderProps) {
       setConnected(false);
     });
 
-    newSocket.on("connect_error", (error) => {
-      console.error("Socket.IO connection error:", error.message);
+    newSocket.on("connect_error", (error: any) => {
+      console.error("Socket.IO connection error:", {
+        message: error?.message,
+        data: error?.data,
+        name: error?.name,
+        url: API_URL,
+        hasToken: Boolean(token),
+      });
       setConnected(false);
     });
 

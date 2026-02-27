@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
+const IS_PROD = import.meta.env.PROD;
 
 export type BoardRole = "admin" | "member" | "observer" | "guest";
 
@@ -271,6 +272,470 @@ export const customerApi = {
         return { success: true as const };
       }
     );
+  },
+};
+
+export type AnalyticsRange = "24h" | "7d" | "30d";
+
+export type AnalyticsReportStatus = "good" | "watch" | "risk";
+
+export type AnalyticsTrendPoint = {
+  label: string;
+  opened: number;
+  resolved: number;
+  sla: number;
+};
+
+export type AnalyticsTeamPoint = {
+  team: string;
+  closed: number;
+  breached: number;
+};
+
+export type AnalyticsReportRow = {
+  metric: string;
+  current: string;
+  previous: string;
+  delta: number;
+  status: AnalyticsReportStatus;
+  action: string;
+};
+
+export type AnalyticsDashboardData = {
+  range: AnalyticsRange;
+  generatedAt: string;
+  trend: AnalyticsTrendPoint[];
+  teams: AnalyticsTeamPoint[];
+  reports: {
+    operations: AnalyticsReportRow[];
+    service: AnalyticsReportRow[];
+    efficiency: AnalyticsReportRow[];
+  };
+  summary: {
+    opened: number;
+    resolved: number;
+    sla: number;
+    backlog: number;
+    firstResponse: number;
+  };
+  source: "api" | "mock";
+};
+
+function generateAnalyticsTrend(range: AnalyticsRange, tick: number): AnalyticsTrendPoint[] {
+  const count = range === "24h" ? 24 : range === "7d" ? 7 : 14;
+  return Array.from({ length: count }, (_, i) => {
+    const base = range === "24h" ? 26 : range === "7d" ? 88 : 74;
+    const opened = Math.round(base + Math.sin((i + tick) / 2.2) * 14 + Math.cos((i + tick) / 3) * 7);
+    const resolved = Math.round(opened - 5 + Math.cos((i + tick) / 1.8) * 8);
+    const sla = Math.max(76, Math.min(99, Math.round(89 + Math.sin((i + tick) / 4) * 5)));
+    const label =
+      range === "24h"
+        ? `${String(i).padStart(2, "0")}:00`
+        : range === "7d"
+          ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i]
+          : `W${i + 1}`;
+    return { label, opened: Math.max(8, opened), resolved: Math.max(6, resolved), sla };
+  });
+}
+
+function generateAnalyticsTeams(tick: number): AnalyticsTeamPoint[] {
+  return [
+    { team: "Tier 1", closed: 132 + (tick % 8), breached: 6 + (tick % 3) },
+    { team: "Tier 2", closed: 96 + ((tick + 2) % 7), breached: 4 + ((tick + 1) % 2) },
+    { team: "Ops", closed: 78 + ((tick + 4) % 9), breached: 3 + (tick % 2) },
+    { team: "Esc", closed: 64 + ((tick + 1) % 6), breached: 8 + ((tick + 3) % 4) },
+  ];
+}
+
+function buildMockAnalyticsDashboard(range: AnalyticsRange, seed = Date.now()): AnalyticsDashboardData {
+  const tick = Math.max(1, Math.floor(seed / 1000) % 1000);
+  const trend = generateAnalyticsTrend(range, tick);
+  const teams = generateAnalyticsTeams(tick);
+  const opened = trend.reduce((s, p) => s + p.opened, 0);
+  const resolved = trend.reduce((s, p) => s + p.resolved, 0);
+  const sla = Math.round(trend.reduce((s, p) => s + p.sla, 0) / Math.max(1, trend.length));
+  const summary = {
+    opened,
+    resolved,
+    sla,
+    backlog: 185 + (opened - resolved),
+    firstResponse: Math.max(6, Math.round(34 - (sla - 84) * 0.8)),
+  };
+
+  const reports = {
+    operations: [
+      {
+        metric: "Intake vs Resolution",
+        current: `${summary.opened} / ${summary.resolved}`,
+        previous: `${Math.max(0, summary.opened - 22)} / ${Math.max(0, summary.resolved - 14)}`,
+        delta: Math.round(((summary.resolved - summary.opened) / Math.max(1, summary.opened)) * 100),
+        status: summary.opened - summary.resolved > 25 ? "risk" : summary.opened - summary.resolved > 8 ? "watch" : "good",
+        action: "Rebalance Tier 1 queue during peak windows.",
+      },
+      {
+        metric: "Backlog Aging",
+        current: `${Math.max(10, 18 + (summary.opened - summary.resolved) * 0.3).toFixed(0)}h`,
+        previous: "21h",
+        delta: -8,
+        status: "watch",
+        action: "Auto-escalate cards older than SLA target.",
+      },
+    ] satisfies AnalyticsReportRow[],
+    service: [
+      {
+        metric: "SLA Compliance",
+        current: `${summary.sla}%`,
+        previous: `${Math.max(70, summary.sla - 2)}%`,
+        delta: summary.sla - 90,
+        status: summary.sla < 85 ? "risk" : summary.sla < 90 ? "watch" : "good",
+        action: "Tune routing by channel and VIP priority.",
+      },
+      {
+        metric: "Avg First Response",
+        current: `${summary.firstResponse} min`,
+        previous: `${summary.firstResponse + 4} min`,
+        delta: 20 - summary.firstResponse,
+        status: summary.firstResponse > 30 ? "risk" : summary.firstResponse > 20 ? "watch" : "good",
+        action: "Introduce triage macros for email queue.",
+      },
+    ] satisfies AnalyticsReportRow[],
+    efficiency: teams.map((t) => ({
+      metric: `${t.team} Team`,
+      current: `${t.closed} closed / ${t.breached} breached`,
+      previous: `${Math.max(0, t.closed - 6)} / ${Math.max(0, t.breached - 1)}`,
+      delta: Math.round(((t.closed - t.breached * 4) / 10) - 10),
+      status: (t.breached > 7 ? "watch" : "good") as AnalyticsReportStatus,
+      action: "Review staffing and handoff delays.",
+    })),
+  };
+
+  return {
+    range,
+    generatedAt: new Date().toISOString(),
+    trend,
+    teams,
+    reports,
+    summary,
+    source: "mock",
+  };
+}
+
+function normalizeAnalyticsDashboard(input: any, range: AnalyticsRange): AnalyticsDashboardData {
+  const fallback = buildMockAnalyticsDashboard(range);
+  const trend = Array.isArray(input?.trend) ? input.trend : fallback.trend;
+  const teams = Array.isArray(input?.teams) ? input.teams : fallback.teams;
+  const reports = {
+    operations: Array.isArray(input?.reports?.operations) ? input.reports.operations : fallback.reports.operations,
+    service: Array.isArray(input?.reports?.service) ? input.reports.service : fallback.reports.service,
+    efficiency: Array.isArray(input?.reports?.efficiency) ? input.reports.efficiency : fallback.reports.efficiency,
+  };
+  const summary =
+    input?.summary &&
+    typeof input.summary.opened === "number" &&
+    typeof input.summary.resolved === "number" &&
+    typeof input.summary.sla === "number" &&
+    typeof input.summary.backlog === "number" &&
+    typeof input.summary.firstResponse === "number"
+      ? input.summary
+      : fallback.summary;
+
+  return {
+    range: (input?.range || range) as AnalyticsRange,
+    generatedAt: typeof input?.generatedAt === "string" ? input.generatedAt : fallback.generatedAt,
+    trend,
+    teams,
+    reports,
+    summary,
+    source: "api",
+  };
+}
+
+async function tryAnalyticsApi(
+  request: () => Promise<Response>,
+  fallback: () => AnalyticsDashboardData | Promise<AnalyticsDashboardData>,
+  range: AnalyticsRange
+) {
+  try {
+    const response = await request();
+    if ((response.status === 404 || response.status === 501) && !IS_PROD) {
+      return await fallback();
+    }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      throw new Error(error.message || "Request failed");
+    }
+    const raw = await response.json();
+    return normalizeAnalyticsDashboard(raw, range);
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    const isNetworkLike =
+      message.includes("Failed to fetch") ||
+      message.includes("NetworkError") ||
+      message.includes("fetch");
+    if (!IS_PROD && (isNetworkLike || !API_URL)) return await fallback();
+    throw error;
+  }
+}
+
+export const analyticsApi = {
+  getDashboard: async (params?: { range?: AnalyticsRange; seed?: number }) => {
+    const range = params?.range || "7d";
+    const seed = params?.seed ?? Date.now();
+    return tryAnalyticsApi(
+      () =>
+        fetch(`${API_URL}/api/analytics/dashboard?range=${encodeURIComponent(range)}`, {
+          headers: getAuthHeaders(),
+        }),
+      () => buildMockAnalyticsDashboard(range, seed),
+      range
+    );
+  },
+};
+
+export type GlobalUserRole = "admin" | "user";
+
+export type AdminUserRecord = {
+  _id: string;
+  username: string;
+  email: string;
+  role: GlobalUserRole;
+  canViewAllAnalytics: boolean;
+  emailVerified?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+function normalizeAdminUserRecord(input: any): AdminUserRecord {
+  return {
+    _id: String(input?._id || ""),
+    username: String(input?.username || "Unknown"),
+    email: String(input?.email || ""),
+    role: String(input?.role || "user").toLowerCase() === "admin" ? "admin" : "user",
+    canViewAllAnalytics: Boolean(input?.canViewAllAnalytics),
+    emailVerified: typeof input?.emailVerified === "boolean" ? input.emailVerified : undefined,
+    createdAt: typeof input?.createdAt === "string" ? input.createdAt : undefined,
+    updatedAt: typeof input?.updatedAt === "string" ? input.updatedAt : undefined,
+  };
+}
+
+export type AdminTicketsSortBy =
+  | "updatedAt"
+  | "createdAt"
+  | "priority"
+  | "status"
+  | "group"
+  | "board"
+  | "list";
+
+export type SortDir = "asc" | "desc";
+
+export type AdminTicketListMeta = {
+  _id: string;
+  title: string;
+  board?: string;
+  archived?: boolean;
+  position?: number;
+};
+
+export type AdminTicketBoardMeta = {
+  _id: string;
+  title: string;
+};
+
+export type AdminTicketCard = Card & {
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AdminTicketListItem = {
+  card: AdminTicketCard;
+  board: AdminTicketBoardMeta;
+  listMeta: AdminTicketListMeta;
+};
+
+export type AdminTicketsFilters = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  status?: string;
+  priority?: string;
+  group?: string;
+  boardId?: string;
+  listId?: string;
+  agentId?: string;
+  includeArchived?: boolean;
+  includeClosed?: boolean;
+  sortBy?: AdminTicketsSortBy;
+  sortDir?: SortDir;
+};
+
+export type AdminTicketsResponse = {
+  scope: string;
+  items: AdminTicketListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+  };
+  filters: Record<string, unknown>;
+};
+
+export type AdminTicketDetailResponse = {
+  card: AdminTicketCard;
+  list: AdminTicketListMeta;
+  board: AdminTicketBoardMeta;
+};
+
+type ApiErrorWithStatus = Error & { status?: number };
+
+function buildQueryParams(params: AdminTicketsFilters = {}) {
+  const q = new URLSearchParams();
+  const add = (key: string, value: unknown) => {
+    if (value === undefined || value === null || value === "") return;
+    q.set(key, String(value));
+  };
+
+  add("page", params.page);
+  add("limit", params.limit);
+  add("q", params.q);
+  add("status", params.status);
+  add("priority", params.priority);
+  add("group", params.group);
+  add("boardId", params.boardId);
+  add("listId", params.listId);
+  add("agentId", params.agentId);
+  if (typeof params.includeArchived === "boolean") add("includeArchived", params.includeArchived);
+  if (typeof params.includeClosed === "boolean") add("includeClosed", params.includeClosed);
+  add("sortBy", params.sortBy);
+  add("sortDir", params.sortDir);
+  return q;
+}
+
+async function handleAdminTicketsResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ message: "Request failed" }));
+    const message =
+      response.status === 401
+        ? payload.message || "Session expired. Please log in again."
+        : response.status === 403
+          ? payload.message || "You are not allowed to access admin tickets."
+          : response.status === 400
+            ? payload.message || "Invalid admin tickets filter."
+            : payload.message || "Request failed";
+    const error = new Error(message) as ApiErrorWithStatus;
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+function normalizeAdminTicketBoardMeta(input: any): AdminTicketBoardMeta {
+  return {
+    _id: String(input?._id || input?.id || ""),
+    title: String(input?.title || "Unknown board"),
+  };
+}
+
+function normalizeAdminTicketListMeta(input: any): AdminTicketListMeta {
+  return {
+    _id: String(input?._id || input?.id || ""),
+    title: String(input?.title || "Unknown list"),
+    board: typeof input?.board === "string" ? input.board : input?.board?._id ? String(input.board._id) : undefined,
+    archived: typeof input?.archived === "boolean" ? input.archived : undefined,
+    position: typeof input?.position === "number" ? input.position : undefined,
+  };
+}
+
+function normalizeAdminTicketCard(input: any): AdminTicketCard {
+  return {
+    ...(input || {}),
+    _id: String(input?._id || input?.id || ""),
+    title: String(input?.title || "Untitled ticket"),
+    createdAt: typeof input?.createdAt === "string" ? input.createdAt : undefined,
+    updatedAt: typeof input?.updatedAt === "string" ? input.updatedAt : undefined,
+  } as AdminTicketCard;
+}
+
+function normalizeAdminTicketListItem(input: any): AdminTicketListItem {
+  const card = normalizeAdminTicketCard(input?.card || input);
+  const board = normalizeAdminTicketBoardMeta(input?.board || input?.boardMeta || {});
+  const listMeta = normalizeAdminTicketListMeta(input?.listMeta || input?.list || {});
+  return { card, board, listMeta };
+}
+
+function normalizeAdminTicketsResponse(input: any, params?: AdminTicketsFilters): AdminTicketsResponse {
+  const itemsRaw = Array.isArray(input?.items) ? input.items : Array.isArray(input) ? input : [];
+  const paginationRaw = input?.pagination || {};
+  const page = Number(paginationRaw.page ?? params?.page ?? 1) || 1;
+  const limit = Number(paginationRaw.limit ?? params?.limit ?? 25) || 25;
+  const total = Number(paginationRaw.total ?? itemsRaw.length) || 0;
+  const totalPages = Number(paginationRaw.totalPages ?? Math.max(1, Math.ceil(total / Math.max(1, limit)))) || 1;
+  const hasNext = typeof paginationRaw.hasNext === "boolean" ? paginationRaw.hasNext : page < totalPages;
+  return {
+    scope: String(input?.scope || "global-admin"),
+    items: itemsRaw.map(normalizeAdminTicketListItem),
+    pagination: { page, limit, total, totalPages, hasNext },
+    filters: input?.filters && typeof input.filters === "object" ? input.filters : {},
+  };
+}
+
+function normalizeAdminTicketDetailResponse(input: any): AdminTicketDetailResponse {
+  return {
+    card: normalizeAdminTicketCard(input?.card || {}),
+    list: normalizeAdminTicketListMeta(input?.list || input?.listMeta || {}),
+    board: normalizeAdminTicketBoardMeta(input?.board || {}),
+  };
+}
+
+export const adminUserApi = {
+  getAll: async () => {
+    const response = await fetch(`${API_URL}/api/users/admin/users`, {
+      headers: getAuthHeaders(),
+    });
+    const raw = await handleResponse<any>(response);
+    const items = Array.isArray(raw) ? raw : Array.isArray(raw?.users) ? raw.users : [];
+    return items.map(normalizeAdminUserRecord);
+  },
+
+  setRole: async (userId: string, role: GlobalUserRole) => {
+    const response = await fetch(`${API_URL}/api/users/admin/${encodeURIComponent(userId)}/role`, {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ role }),
+    });
+    const raw = await handleResponse<any>(response);
+    return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
+  },
+
+  setAnalyticsAccess: async (userId: string, canViewAllAnalytics: boolean) => {
+    const response = await fetch(`${API_URL}/api/users/admin/${encodeURIComponent(userId)}/analytics-access`, {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ canViewAllAnalytics }),
+    });
+    const raw = await handleResponse<any>(response);
+    return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
+  },
+};
+
+export const adminTicketsApi = {
+  getAll: async (params: AdminTicketsFilters = {}) => {
+    const search = buildQueryParams(params).toString();
+    const response = await fetch(`${API_URL}/api/admin/tickets${search ? `?${search}` : ""}`, {
+      headers: getAuthHeaders(),
+    });
+    const raw = await handleAdminTicketsResponse<any>(response);
+    return normalizeAdminTicketsResponse(raw, params);
+  },
+
+  getById: async (cardId: string) => {
+    const response = await fetch(`${API_URL}/api/admin/tickets/${encodeURIComponent(cardId)}`, {
+      headers: getAuthHeaders(),
+    });
+    const raw = await handleAdminTicketsResponse<any>(response);
+    return normalizeAdminTicketDetailResponse(raw);
   },
 };
 

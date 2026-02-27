@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import SidebarRail from "@/components/SidebarRail";
 import { boardApi, listApi, cardApi, Board, List, Card } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { isGlobalAdmin } from "@/lib/authz";
 import { NotificationBell } from "@/components/NotificationBell";
 import {
   ArrowUpDown,
@@ -68,6 +69,7 @@ export default function TicketsInbox() {
   const [assignMemberUserId, setAssignMemberUserId] = useState<string>("");
   const [assignAgentUserId, setAssignAgentUserId] = useState<string>("");
   const [savedView, setSavedView] = useState<SavedView>("none");
+  const isGlobalAdminUser = isGlobalAdmin(user);
 
   const getUserBoardRole = (board: Board): "admin" | "member" | "guest" | "observer" | null => {
     const membership = board.members.find((m) => m.user?._id === user?._id);
@@ -75,6 +77,7 @@ export default function TicketsInbox() {
   };
 
   const canBulkManageTicket = (ticket: TicketItem): boolean => {
+    if (isGlobalAdminUser) return true;
     const role = getUserBoardRole(ticket.board);
     return role === "admin" || role === "member";
   };
@@ -248,7 +251,7 @@ export default function TicketsInbox() {
       });
     });
     return Array.from(map.values()).sort((a, b) => a.username.localeCompare(b.username));
-  }, [filteredTickets, selectedIds, user?._id]);
+  }, [filteredTickets, selectedIds, user?._id, isGlobalAdminUser]);
 
   const selectedTickets = useMemo(
     () => filteredTickets.filter((t) => selectedIds.has(t.card._id)),
@@ -256,7 +259,7 @@ export default function TicketsInbox() {
   );
   const selectedEligibleTickets = useMemo(
     () => selectedTickets.filter(canBulkManageTicket),
-    [selectedTickets, user?._id]
+    [selectedTickets, user?._id, isGlobalAdminUser]
   );
   const restrictedSelectedCount = selectedTickets.length - selectedEligibleTickets.length;
 
@@ -460,7 +463,9 @@ export default function TicketsInbox() {
           <div className="px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
-                <div className="text-sm text-slate-500">All tickets</div>
+                <div className="text-sm text-slate-500">
+                  {isGlobalAdminUser ? "All tickets (admin scope)" : "All tickets"}
+                </div>
                 <div className="text-lg font-semibold text-slate-900">Tickets Inbox</div>
               </div>
               <Button variant="outline" size="sm" className="gap-2">
@@ -550,6 +555,12 @@ export default function TicketsInbox() {
                 </Button>
               ))}
             </div>
+
+            {isGlobalAdminUser && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Global admin mode enabled. Visible tickets still depend on backend `/api/boards` and board/card authorization.
+              </div>
+            )}
 
             {selectedIds.size > 0 && (
               <div className="mb-4 flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
