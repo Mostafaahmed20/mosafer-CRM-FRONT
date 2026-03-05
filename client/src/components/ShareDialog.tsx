@@ -37,6 +37,10 @@ export function ShareDialog({
   const [isAdding, setIsAdding] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [changingRoleMemberId, setChangingRoleMemberId] = useState<string | null>(null);
+  const safeMembers = board.members.filter(
+    (member): member is Board["members"][number] & { user: NonNullable<Board["members"][number]["user"]> } =>
+      Boolean(member?.user?._id && member.user?.username)
+  );
 
   const isAdmin = currentUserRole === "admin";
 
@@ -140,10 +144,10 @@ export function ShareDialog({
           {/* Members list */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-[#475569]">
-              Members ({board.members.length})
+              Members ({safeMembers.length})
             </label>
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {board.members.map((member) => (
+              {safeMembers.map((member) => (
                 <div
                   key={member.user._id}
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors"

@@ -181,6 +181,10 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [isEditingTicketFields, setIsEditingTicketFields] = useState(false);
+  const safeMembers = members.filter(
+    (member): member is BoardMember & { user: NonNullable<BoardMember["user"]> } =>
+      Boolean(member?.user?._id && member.user?.username)
+  );
 
   useEffect(() => {
     if (card) {
@@ -228,7 +232,11 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
       setShowServiceOrders((card.serviceOrders || []).length > 0);
       setShowCoveringBookingDetails(false);
       setCover(card.cover || "");
-      setSelectedMembers((card.members || []).map((m) => m._id));
+      setSelectedMembers(
+        (Array.isArray(card.members) ? card.members : [])
+          .map((m) => m?._id)
+          .filter((id): id is string => Boolean(id))
+      );
       setIsEditingTicketFields(false);
     }
   }, [card]);
@@ -960,7 +968,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           <h3 className="text-xs font-semibold text-[#475569] mb-2">Members</h3>
           <div className="flex items-center flex-wrap gap-2">
             {selectedMembers.map((id) => {
-              const member = members.find((m) => m.user._id === id);
+              const member = safeMembers.find((m) => m.user._id === id);
               if (!member) return null;
               return (
                 <button
@@ -990,9 +998,9 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </Button>
             )}
           </div>
-          {showMemberPicker && canManageCardMembers(userRole) && members.length > 0 && (
+          {showMemberPicker && canManageCardMembers(userRole) && safeMembers.length > 0 && (
             <div className="mt-2 border border-slate-200 rounded-lg shadow-lg bg-white max-h-48 overflow-y-auto">
-              {members.map((m) => {
+              {safeMembers.map((m) => {
                 const checked = selectedMembers.includes(m.user._id);
                 return (
                   <label
@@ -1056,7 +1064,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 <div className="space-y-0.5"><span className="font-semibold text-slate-500">Priority:</span> {ticketPriority || "-"}</div>
                 <div className="space-y-0.5"><span className="font-semibold text-slate-500">Group:</span> {ticketGroup || "-"}</div>
                 <div className="space-y-0.5"><span className="font-semibold text-slate-500">Payment:</span> {paymentStatus || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Agent:</span> {members.find((m) => m.user._id === ticketAgent)?.user.username || "Unassigned"}</div>
+                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Agent:</span> {safeMembers.find((m) => m.user._id === ticketAgent)?.user.username || "Unassigned"}</div>
                 <div className="space-y-0.5"><span className="font-semibold text-slate-500">Check-in:</span> {checkInDate || "-"}</div>
                 <div className="space-y-0.5"><span className="font-semibold text-slate-500">Check-out:</span> {checkOutDate || "-"}</div>
                 <div className="space-y-0.5"><span className="font-semibold text-slate-500">Arrival:</span> {arrivalDate || "-"}</div>
@@ -1177,7 +1185,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 <label className="text-xs font-semibold text-[#64748B]">Agent</label>
                 <select value={ticketAgent} onChange={(e) => setTicketAgent(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
                   <option value="">Unassigned</option>
-                  {members.map((m) =>
+                  {safeMembers.map((m) =>
                     m.user ? (
                       <option key={m.user._id} value={m.user._id}>
                         {m.user.username}
@@ -1229,7 +1237,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 <div><span className="font-semibold text-slate-500">Status:</span> {handoverStatus}</div>
                 <div>
                   <span className="font-semibold text-slate-500">Next owner:</span>{" "}
-                  {members.find((m) => m.user._id === handoverNextOwner)?.user.username || "Unassigned"}
+                  {safeMembers.find((m) => m.user._id === handoverNextOwner)?.user.username || "Unassigned"}
                 </div>
                 <div><span className="font-semibold text-slate-500">Pending:</span> {handoverPendingState}</div>
                 <div className="sm:col-span-2"><span className="font-semibold text-slate-500">Summary:</span> {handoverSummary || "-"}</div>
@@ -1268,7 +1276,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 <label className="text-xs font-semibold text-[#64748B]">Next owner</label>
                 <select value={handoverNextOwner} onChange={(e) => setHandoverNextOwner(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
                   <option value="">Unassigned</option>
-                  {members.map((m) =>
+                  {safeMembers.map((m) =>
                     m.user ? (
                       <option key={m.user._id} value={m.user._id}>
                         {m.user.username}
@@ -1874,9 +1882,9 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                         }
                       }}
                     />
-                    {showMentionList && members.length > 0 && (
+                    {showMentionList && safeMembers.length > 0 && (
                       <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg text-sm">
-                        {members
+                        {safeMembers
                           .filter((m) =>
                             mentionQuery
                               ? m.user.username.toLowerCase().includes(mentionQuery.toLowerCase())

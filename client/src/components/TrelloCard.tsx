@@ -103,6 +103,10 @@ export function TrelloCard({
     ? "card-badge text-amber-700 bg-amber-50 border-amber-200"
     : "card-badge text-slate-700 bg-slate-50 border-slate-200";
   const hasBadgesWithHandover = Boolean(hasBadges || slaBadge || showHandoverBadge);
+  const safeMembers = (Array.isArray(card.members) ? card.members : []).filter(
+    (member): member is NonNullable<Card["members"][number]> =>
+      Boolean(member?._id && member?.username)
+  );
 
   return (
     <div
@@ -245,9 +249,9 @@ export function TrelloCard({
       )}
 
       {/* Members */}
-      {card.members && card.members.length > 0 && (
+      {safeMembers.length > 0 && (
         <div className="flex justify-end mt-2 -space-x-1">
-          {card.members.slice(0, 3).map((member) => (
+          {safeMembers.slice(0, 3).map((member) => (
             <div
               key={member._id}
               className="member-avatar-sm member-avatar"
@@ -256,9 +260,9 @@ export function TrelloCard({
               {member.username.charAt(0).toUpperCase()}
             </div>
           ))}
-          {card.members.length > 3 && (
+          {safeMembers.length > 3 && (
             <div className="member-avatar-sm member-avatar">
-              +{card.members.length - 3}
+              +{safeMembers.length - 3}
             </div>
           )}
         </div>
