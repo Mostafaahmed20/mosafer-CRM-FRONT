@@ -321,6 +321,26 @@ export type AnalyticsDashboardData = {
   source: "api" | "mock";
 };
 
+export type AnalyticsFilters = {
+  team?: string;
+  board?: string;
+  customer?: string;
+  channel?: string;
+};
+
+export type AnalyticsFilterOptions = {
+  teams: string[];
+  boards: string[];
+  customers: string[];
+  channels: string[];
+};
+
+export type AnalyticsDashboardQuery = {
+  range?: AnalyticsRange;
+  seed?: number;
+  filters?: AnalyticsFilters;
+};
+
 function generateAnalyticsTrend(range: AnalyticsRange, tick: number): AnalyticsTrendPoint[] {
   const count = range === "24h" ? 24 : range === "7d" ? 7 : 14;
   return Array.from({ length: count }, (_, i) => {
@@ -450,45 +470,229 @@ function normalizeAnalyticsDashboard(input: any, range: AnalyticsRange): Analyti
   };
 }
 
-async function tryAnalyticsApi(
-  request: () => Promise<Response>,
-  fallback: () => AnalyticsDashboardData | Promise<AnalyticsDashboardData>,
-  range: AnalyticsRange
+function normalizeAnalyticsSummary(
+  input: any,
+  fallback: AnalyticsDashboardData["summary"]
+): AnalyticsDashboardData["summary"] {
+  if (
+    input &&
+    typeof input.opened === "number" &&
+    typeof input.resolved === "number" &&
+    typeof input.sla === "number" &&
+    typeof input.backlog === "number" &&
+    typeof input.firstResponse === "number"
+  ) {
+    return input;
+  }
+  if (
+    input?.summary &&
+    typeof input.summary.opened === "number" &&
+    typeof input.summary.resolved === "number" &&
+    typeof input.summary.sla === "number" &&
+    typeof input.summary.backlog === "number" &&
+    typeof input.summary.firstResponse === "number"
+  ) {
+    return input.summary;
+  }
+  return fallback;
+}
+
+function normalizeAnalyticsTrend(
+  input: any,
+  fallback: AnalyticsTrendPoint[]
+): AnalyticsTrendPoint[] {
+  if (Array.isArray(input)) return input;
+  if (Array.isArray(input?.trend)) return input.trend;
+  return fallback;
+}
+
+function normalizeAnalyticsTeams(
+  input: any,
+  fallback: AnalyticsTeamPoint[]
+): AnalyticsTeamPoint[] {
+  if (Array.isArray(input)) return input;
+  if (Array.isArray(input?.teams)) return input.teams;
+  return fallback;
+}
+
+function normalizeAnalyticsReports(
+  input: any,
+  fallback: AnalyticsDashboardData["reports"]
+): AnalyticsDashboardData["reports"] {
+  const target = input?.reports ?? input;
+  return {
+    operations: Array.isArray(target?.operations) ? target.operations : fallback.operations,
+    service: Array.isArray(target?.service) ? target.service : fallback.service,
+    efficiency: Array.isArray(target?.efficiency) ? target.efficiency : fallback.efficiency,
+  };
+}
+
+function normalizeAnalyticsFilterOptions(
+  input: any,
+  fallback: AnalyticsFilterOptions
+): AnalyticsFilterOptions {
+  const unique = (arr: unknown[]) =>
+    Array.from(new Set(arr.map((item) => String(item || "").trim()).filter(Boolean)));
+  return {
+    teams: Array.isArray(input?.teams) ? unique(input.teams) : fallback.teams,
+    boards: Array.isArray(input?.boards) ? unique(input.boards) : fallback.boards,
+    customers: Array.isArray(input?.customers) ? unique(input.customers) : fallback.customers,
+    channels: Array.isArray(input?.channels) ? unique(input.channels) : fallback.channels,
+  };
+}
+
+function cleanAnalyticsFilters(filters?: AnalyticsFilters): AnalyticsFilters {
+  const clean = (value?: string) => {
+    const next = String(value || "").trim();
+    if (!next || next.toLowerCase() === "all") return undefined;
+    return next;
+  };
+  return {
+    team: clean(filters?.team),
+    board: clean(filters?.board),
+    customer: clean(filters?.customer),
+    channel: clean(filters?.channel),
+  };
+}
+
+function buildAnalyticsQueryParams(range: AnalyticsRange, filters?: AnalyticsFilters) {
+  const query = new URLSearchParams();
+  query.set("range", range);
+  const next = cleanAnalyticsFilters(filters);
+  if (next.team) query.set("team", next.team);
+  if (next.board) query.set("board", next.board);
+  if (next.customer) query.set("customer", next.customer);
+  if (next.channel) query.set("channel", next.channel);
+  return query.toString();
+}
+
+async function requestAnalyticsJson(path: string, range: AnalyticsRange, filters?: AnalyticsFilters) {
+  const query = buildAnalyticsQueryParams(range, filters);
+  const response = await fetch(`${API_URL}/api/analytics/${path}${query ? `?${query}` : ""}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ message: "Request failed" }));
+    const error: any = new Error(errorBody?.message || "Request failed");
+    error.status = response.status;
+    error.code =
+      response.status === 404 || response.status === 501
+        ? "analytics_endpoint_missing"
+        : "analytics_request_failed";
+    throw error;
+  }
+
+  return response.json();
+}
+
+function isAnalyticsNetworkLikeError(error: any) {
+  const message = String(error?.message || "");
+  return (
+    message.includes("Failed to fetch") ||
+    message.includes("NetworkError") ||
+    message.includes("fetch")
+  );
+}
+
+async function tryAnalyticsValue<T>(
+  request: () => Promise<T>,
+  fallback: () => T | Promise<T>,
+  options?: { allowProdMissingEndpointFallback?: boolean }
 ) {
   try {
-    const response = await request();
-    if ((response.status === 404 || response.status === 501) && !IS_PROD) {
-      return await fallback();
-    }
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: "Request failed" }));
-      throw new Error(error.message || "Request failed");
-    }
-    const raw = await response.json();
-    return normalizeAnalyticsDashboard(raw, range);
+    return await request();
   } catch (error: any) {
-    const message = String(error?.message || "");
-    const isNetworkLike =
-      message.includes("Failed to fetch") ||
-      message.includes("NetworkError") ||
-      message.includes("fetch");
-    if (!IS_PROD && (isNetworkLike || !API_URL)) return await fallback();
+    const missingEndpoint = error?.code === "analytics_endpoint_missing";
+    const shouldFallback =
+      (!IS_PROD && (isAnalyticsNetworkLikeError(error) || !API_URL || missingEndpoint)) ||
+      (Boolean(options?.allowProdMissingEndpointFallback) && missingEndpoint);
+    if (shouldFallback) return await fallback();
     throw error;
   }
 }
 
 export const analyticsApi = {
-  getDashboard: async (params?: { range?: AnalyticsRange; seed?: number }) => {
+  getDashboard: async (params?: AnalyticsDashboardQuery) => {
     const range = params?.range || "7d";
     const seed = params?.seed ?? Date.now();
-    return tryAnalyticsApi(
-      () =>
-        fetch(`${API_URL}/api/analytics/dashboard?range=${encodeURIComponent(range)}`, {
-          headers: getAuthHeaders(),
-        }),
+    return tryAnalyticsValue(
+      async () => {
+        const raw = await requestAnalyticsJson("dashboard", range, params?.filters);
+        return normalizeAnalyticsDashboard(raw, range);
+      },
       () => buildMockAnalyticsDashboard(range, seed),
-      range
+      { allowProdMissingEndpointFallback: false }
     );
+  },
+
+  getFilterOptions: async (params?: AnalyticsDashboardQuery) => {
+    const range = params?.range || "7d";
+    const dashboard = await analyticsApi.getDashboard(params);
+    const fallback: AnalyticsFilterOptions = {
+      teams: Array.from(new Set(dashboard.teams.map((item) => item.team).filter(Boolean))),
+      boards: [],
+      customers: [],
+      channels: ["Email", "WhatsApp", "Portal", "Chat", "Phone", "API"],
+    };
+
+    return tryAnalyticsValue(
+      async () => {
+        const raw = await requestAnalyticsJson("filters", range, params?.filters);
+        return normalizeAnalyticsFilterOptions(raw, fallback);
+      },
+      () => fallback,
+      { allowProdMissingEndpointFallback: true }
+    );
+  },
+
+  getDashboardWidgets: async (params?: AnalyticsDashboardQuery) => {
+    const range = params?.range || "7d";
+    const dashboard = await analyticsApi.getDashboard(params);
+
+    const [summary, trend, teams, reports] = await Promise.all([
+      tryAnalyticsValue(
+        async () => {
+          const raw = await requestAnalyticsJson("summary", range, params?.filters);
+          return normalizeAnalyticsSummary(raw, dashboard.summary);
+        },
+        () => dashboard.summary,
+        { allowProdMissingEndpointFallback: true }
+      ),
+      tryAnalyticsValue(
+        async () => {
+          const raw = await requestAnalyticsJson("trend", range, params?.filters);
+          return normalizeAnalyticsTrend(raw, dashboard.trend);
+        },
+        () => dashboard.trend,
+        { allowProdMissingEndpointFallback: true }
+      ),
+      tryAnalyticsValue(
+        async () => {
+          const raw = await requestAnalyticsJson("teams", range, params?.filters);
+          return normalizeAnalyticsTeams(raw, dashboard.teams);
+        },
+        () => dashboard.teams,
+        { allowProdMissingEndpointFallback: true }
+      ),
+      tryAnalyticsValue(
+        async () => {
+          const raw = await requestAnalyticsJson("reports", range, params?.filters);
+          return normalizeAnalyticsReports(raw, dashboard.reports);
+        },
+        () => dashboard.reports,
+        { allowProdMissingEndpointFallback: true }
+      ),
+    ]);
+
+    return {
+      ...dashboard,
+      summary,
+      trend,
+      teams,
+      reports,
+      source: dashboard.source,
+    } satisfies AnalyticsDashboardData;
   },
 };
 

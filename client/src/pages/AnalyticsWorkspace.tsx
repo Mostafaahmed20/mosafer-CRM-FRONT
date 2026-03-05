@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
-import { Activity, BarChart3, Clock3, RefreshCw, TrendingUp } from "lucide-react";
+import { Activity, BarChart3, Clock3, Download, FileText, RefreshCw, Save, Trash2, TrendingUp } from "lucide-react";
 import SidebarRail from "@/components/SidebarRail";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,8 @@ import { canAccessAnalytics } from "@/lib/authz";
 import {
   analyticsApi,
   AnalyticsDashboardData,
+  AnalyticsFilterOptions,
+  AnalyticsFilters,
   AnalyticsRange,
   AnalyticsReportStatus,
 } from "@/lib/api";
@@ -25,11 +27,45 @@ type Preferences = {
   visible: Record<WidgetKey, boolean>;
 };
 
+type AnalyticsFilterState = {
+  team: string;
+  board: string;
+  customer: string;
+  channel: string;
+};
+
+type AnalyticsPreset = {
+  id: string;
+  name: string;
+  range: AnalyticsRange;
+  autoRefresh: boolean;
+  visible: Record<WidgetKey, boolean>;
+  filters: AnalyticsFilterState;
+  createdAt: string;
+};
+
 const PREFS_KEY = "crm_analytics_prefs_v1";
+const PRESETS_KEY = "crm_analytics_report_presets_v1";
+const FILTER_ALL = "all";
+
 const DEFAULT_PREFS: Preferences = {
   range: "7d",
   autoRefresh: true,
   visible: { kpis: true, trends: true, teams: true, reports: true },
+};
+
+const DEFAULT_FILTERS: AnalyticsFilterState = {
+  team: FILTER_ALL,
+  board: FILTER_ALL,
+  customer: FILTER_ALL,
+  channel: FILTER_ALL,
+};
+
+const EMPTY_FILTER_OPTIONS: AnalyticsFilterOptions = {
+  teams: [],
+  boards: [],
+  customers: [],
+  channels: [],
 };
 
 function loadPrefs(): Preferences {
@@ -53,6 +89,59 @@ function savePrefs(prefs: Preferences) {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 }
 
+function loadPresets(): AnalyticsPreset[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item: any) => ({
+        id: String(item?.id || ""),
+        name: String(item?.name || ""),
+        range: ["24h", "7d", "30d"].includes(item?.range) ? item.range : "7d",
+        autoRefresh: typeof item?.autoRefresh === "boolean" ? item.autoRefresh : DEFAULT_PREFS.autoRefresh,
+        visible: { ...DEFAULT_PREFS.visible, ...(item?.visible || {}) },
+        filters: {
+          team: item?.filters?.team || FILTER_ALL,
+          board: item?.filters?.board || FILTER_ALL,
+          customer: item?.filters?.customer || FILTER_ALL,
+          channel: item?.filters?.channel || FILTER_ALL,
+        },
+        createdAt: typeof item?.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+      }))
+      .filter((preset: AnalyticsPreset) => preset.id && preset.name);
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: AnalyticsPreset[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+function toApiFilters(filters: AnalyticsFilterState): AnalyticsFilters {
+  const clean = (value: string) => {
+    const next = String(value || "").trim();
+    if (!next || next.toLowerCase() === FILTER_ALL) return undefined;
+    return next;
+  };
+  return {
+    team: clean(filters.team),
+    board: clean(filters.board),
+    customer: clean(filters.customer),
+    channel: clean(filters.channel),
+  };
+}
+
+function getActiveFilterCount(filters: AnalyticsFilterState) {
+  return [filters.team, filters.board, filters.customer, filters.channel].filter(
+    (value) => value && value.toLowerCase() !== FILTER_ALL
+  ).length;
+}
+
 function statusClass(status: AnalyticsReportStatus) {
   if (status === "good") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
   if (status === "watch") return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
@@ -65,10 +154,43 @@ function deltaClass(delta: number) {
     : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300";
 }
 
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadTextFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export default function AnalyticsWorkspace() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [prefs, setPrefs] = useState<Preferences>(() => loadPrefs());
+  const [filters, setFilters] = useState<AnalyticsFilterState>(DEFAULT_FILTERS);
+  const [presets, setPresets] = useState<AnalyticsPreset[]>(() => loadPresets());
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [filterOptions, setFilterOptions] = useState<AnalyticsFilterOptions>(EMPTY_FILTER_OPTIONS);
   const [tick, setTick] = useState(1);
   const [data, setData] = useState<AnalyticsDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -93,6 +215,11 @@ export default function AnalyticsWorkspace() {
     return () => window.clearInterval(id);
   }, [prefs.autoRefresh]);
 
+  const apiFilters = useMemo(
+    () => toApiFilters(filters),
+    [filters.team, filters.board, filters.customer, filters.channel]
+  );
+
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -101,9 +228,13 @@ export default function AnalyticsWorkspace() {
       else setIsRefreshing(true);
       setError(null);
       try {
-        const next = await analyticsApi.getDashboard({ range: prefs.range, seed: tick });
+        const [next, options] = await Promise.all([
+          analyticsApi.getDashboardWidgets({ range: prefs.range, seed: tick, filters: apiFilters }),
+          analyticsApi.getFilterOptions({ range: prefs.range }),
+        ]);
         if (!active) return;
         setData(next);
+        setFilterOptions(options);
       } catch (err: any) {
         if (!active) return;
         setError(err?.message || "Failed to load analytics");
@@ -117,13 +248,14 @@ export default function AnalyticsWorkspace() {
     return () => {
       active = false;
     };
-  }, [prefs.range, tick]);
+  }, [prefs.range, tick, apiFilters]);
 
   const trend = data?.trend ?? [];
   const teams = data?.teams ?? [];
   const totals = data?.summary ?? { opened: 0, resolved: 0, sla: 0, backlog: 0, firstResponse: 0 };
   const reports = data?.reports ?? { operations: [], service: [], efficiency: [] };
   const isEmpty = !isLoading && !error && trend.length === 0 && teams.length === 0;
+  const activeFilterCount = getActiveFilterCount(filters);
 
   const chartConfig = {
     opened: { label: "Opened", color: "#0f766e" },
@@ -132,6 +264,198 @@ export default function AnalyticsWorkspace() {
     closed: { label: "Closed", color: "#0284c7" },
     breached: { label: "Breached", color: "#ef4444" },
   } as const;
+
+  const handleFilterChange = (key: keyof AnalyticsFilterState, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleClearFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+  };
+
+  const handleSavePreset = () => {
+    const suggested = `Report ${new Date().toLocaleDateString()}`;
+    const name = window.prompt("Preset name", suggested)?.trim();
+    if (!name) return;
+
+    const preset: AnalyticsPreset = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      range: prefs.range,
+      autoRefresh: prefs.autoRefresh,
+      visible: { ...prefs.visible },
+      filters: { ...filters },
+      createdAt: new Date().toISOString(),
+    };
+
+    setPresets((prev) => {
+      const deduped = prev.filter((item) => item.name.toLowerCase() !== name.toLowerCase());
+      const next = [preset, ...deduped];
+      savePresets(next);
+      return next;
+    });
+    setSelectedPresetId(preset.id);
+  };
+
+  const handleApplyPreset = () => {
+    const preset = presets.find((item) => item.id === selectedPresetId);
+    if (!preset) return;
+    setPrefs({
+      range: preset.range,
+      autoRefresh: preset.autoRefresh,
+      visible: { ...preset.visible },
+    });
+    setFilters({ ...preset.filters });
+    setTick((v) => v + 1);
+  };
+
+  const handleDeletePreset = () => {
+    if (!selectedPresetId) return;
+    setPresets((prev) => {
+      const next = prev.filter((item) => item.id !== selectedPresetId);
+      savePresets(next);
+      return next;
+    });
+    setSelectedPresetId("");
+  };
+
+  const handleExportCsv = () => {
+    if (!data) return;
+
+    const rows: string[][] = [];
+    rows.push(["CRM Analytics Export"]);
+    rows.push(["Generated At", new Date(data.generatedAt).toLocaleString()]);
+    rows.push(["Range", data.range]);
+    rows.push(["Team", filters.team]);
+    rows.push(["Board", filters.board]);
+    rows.push(["Customer", filters.customer]);
+    rows.push(["Channel", filters.channel]);
+    rows.push([]);
+
+    rows.push(["Summary"]);
+    rows.push(["Opened", "Resolved", "SLA", "Backlog", "First Response (min)"]);
+    rows.push([
+      String(totals.opened),
+      String(totals.resolved),
+      `${totals.sla}%`,
+      String(totals.backlog),
+      String(totals.firstResponse),
+    ]);
+    rows.push([]);
+
+    rows.push(["Trend"]);
+    rows.push(["Label", "Opened", "Resolved", "SLA"]);
+    trend.forEach((point) => {
+      rows.push([point.label, String(point.opened), String(point.resolved), `${point.sla}%`]);
+    });
+    rows.push([]);
+
+    rows.push(["Teams"]);
+    rows.push(["Team", "Closed", "Breached"]);
+    teams.forEach((point) => {
+      rows.push([point.team, String(point.closed), String(point.breached)]);
+    });
+    rows.push([]);
+
+    (["operations", "service", "efficiency"] as const).forEach((tab) => {
+      rows.push([`Report: ${tab}`]);
+      rows.push(["Metric", "Current", "Previous", "Delta", "Status", "Action"]);
+      reports[tab].forEach((row) => {
+        rows.push([
+          row.metric,
+          row.current,
+          row.previous,
+          `${row.delta >= 0 ? "+" : ""}${row.delta}%`,
+          row.status,
+          row.action,
+        ]);
+      });
+      rows.push([]);
+    });
+
+    const content = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+    const suffix = new Date().toISOString().slice(0, 10);
+    downloadTextFile(`analytics-report-${suffix}.csv`, content, "text/csv;charset=utf-8;");
+  };
+
+  const handleExportPdf = () => {
+    if (!data) return;
+
+    const filterText = [
+      `Team: ${filters.team}`,
+      `Board: ${filters.board}`,
+      `Customer: ${filters.customer}`,
+      `Channel: ${filters.channel}`,
+    ].join(" | ");
+
+    const reportRows = (["operations", "service", "efficiency"] as const)
+      .flatMap((tab) =>
+        reports[tab].map(
+          (row) =>
+            `<tr>
+              <td>${escapeHtml(tab)}</td>
+              <td>${escapeHtml(row.metric)}</td>
+              <td>${escapeHtml(row.current)}</td>
+              <td>${escapeHtml(row.previous)}</td>
+              <td>${escapeHtml(`${row.delta >= 0 ? "+" : ""}${row.delta}%`)}</td>
+              <td>${escapeHtml(row.status)}</td>
+            </tr>`
+        )
+      )
+      .join("");
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    if (!printWindow) return;
+
+    printWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Analytics Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .meta { color: #4b5563; font-size: 12px; margin-bottom: 12px; }
+    .summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
+    .summary div { border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; font-size: 12px; }
+    .summary strong { display: block; font-size: 18px; color: #111827; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+    th, td { border: 1px solid #e5e7eb; text-align: left; padding: 8px; font-size: 12px; }
+    th { background: #f9fafb; }
+  </style>
+</head>
+<body>
+  <h1>Operations Analytics Report</h1>
+  <div class="meta">Generated: ${escapeHtml(new Date(data.generatedAt).toLocaleString())}</div>
+  <div class="meta">Range: ${escapeHtml(data.range)} | ${escapeHtml(filterText)}</div>
+  <div class="summary">
+    <div>Opened<strong>${escapeHtml(totals.opened)}</strong></div>
+    <div>Resolved<strong>${escapeHtml(totals.resolved)}</strong></div>
+    <div>SLA<strong>${escapeHtml(`${totals.sla}%`)}</strong></div>
+    <div>Backlog<strong>${escapeHtml(totals.backlog)}</strong></div>
+    <div>First Response<strong>${escapeHtml(`${totals.firstResponse} min`)}</strong></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Section</th>
+        <th>Metric</th>
+        <th>Current</th>
+        <th>Previous</th>
+        <th>Delta</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${reportRows}
+    </tbody>
+  </table>
+</body>
+</html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   if (!authLoading && isAuthenticated && !canAccessAnalytics(user)) {
     return null;
@@ -156,7 +480,7 @@ export default function AnalyticsWorkspace() {
                       Real-time KPI monitoring, trend analysis, and performance reporting to identify bottlenecks early.
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={prefs.range}
                       onChange={(e) => setPrefs((p) => ({ ...p, range: e.target.value as AnalyticsRange }))}
@@ -170,6 +494,14 @@ export default function AnalyticsWorkspace() {
                       <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
                       {isRefreshing ? "Refreshing..." : "Refresh"}
                     </Button>
+                    <Button variant="outline" onClick={handleExportCsv} disabled={!data}>
+                      <Download className="h-4 w-4" />
+                      CSV
+                    </Button>
+                    <Button variant="outline" onClick={handleExportPdf} disabled={!data}>
+                      <FileText className="h-4 w-4" />
+                      PDF
+                    </Button>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
@@ -177,8 +509,64 @@ export default function AnalyticsWorkspace() {
                   <span>
                     Updated: {data?.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : "--:--:--"}
                   </span>
+                  <span>Active filters: {activeFilterCount}</span>
                 </div>
               </CardHeader>
+            </Card>
+
+            <Card className="bg-white/90 text-slate-900 dark:bg-slate-900/90 dark:text-slate-100">
+              <CardHeader className="pb-0">
+                <CardTitle className="text-base">Filters</CardTitle>
+                <CardDescription>Filter analytics by team, board, customer, and channel.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <select
+                    value={filters.team}
+                    onChange={(e) => handleFilterChange("team", e.target.value)}
+                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    <option value={FILTER_ALL}>All teams</option>
+                    {filterOptions.teams.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={filters.board}
+                    onChange={(e) => handleFilterChange("board", e.target.value)}
+                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    <option value={FILTER_ALL}>All boards</option>
+                    {filterOptions.boards.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={filters.customer}
+                    onChange={(e) => handleFilterChange("customer", e.target.value)}
+                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    <option value={FILTER_ALL}>All customers</option>
+                    {filterOptions.customers.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={filters.channel}
+                    onChange={(e) => handleFilterChange("channel", e.target.value)}
+                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    <option value={FILTER_ALL}>All channels</option>
+                    {filterOptions.channels.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{activeFilterCount} filter(s) active</div>
+                  <Button variant="ghost" size="sm" onClick={handleClearFilters}>Reset filters</Button>
+                </div>
+              </CardContent>
             </Card>
 
             {isLoading && (
@@ -211,7 +599,7 @@ export default function AnalyticsWorkspace() {
                 <CardContent className="py-10 text-center">
                   <div className="text-sm font-medium">No analytics data available</div>
                   <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    The server returned an empty analytics payload for this range.
+                    The server returned an empty analytics payload for this range and filter selection.
                   </div>
                 </CardContent>
               </Card>
@@ -340,7 +728,7 @@ export default function AnalyticsWorkspace() {
                 <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                   <div>
                     <div className="text-sm font-medium">Auto refresh</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">Simulated every 15s</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">Refresh every 15s</div>
                   </div>
                   <Switch checked={prefs.autoRefresh} onCheckedChange={(v) => setPrefs((p) => ({ ...p, autoRefresh: !!v }))} />
                 </div>
@@ -363,17 +751,37 @@ export default function AnalyticsWorkspace() {
 
             <Card className="bg-white/90 text-slate-900 dark:bg-slate-900/90 dark:text-slate-100">
               <CardHeader className="pb-0">
-                <CardTitle className="text-base">Next Frontend Steps</CardTitle>
+                <CardTitle className="text-base">Saved Report Presets</CardTitle>
+                <CardDescription>Save current range, filters, and visible widgets.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  Connect widgets to `/api/analytics/*` endpoints.
+              <CardContent className="space-y-3">
+                <select
+                  value={selectedPresetId}
+                  onChange={(e) => setSelectedPresetId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <option value="">Select preset</option>
+                  {presets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <Button variant="outline" onClick={handleSavePreset}>
+                    <Save className="h-4 w-4" />
+                    Save Current
+                  </Button>
+                  <Button variant="outline" onClick={handleApplyPreset} disabled={!selectedPresetId}>
+                    Apply
+                  </Button>
+                  <Button variant="outline" onClick={handleDeletePreset} disabled={!selectedPresetId}>
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
                 </div>
-                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  Add filters by team, board, customer, and channel.
-                </div>
-                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  Add CSV/PDF export and saved report presets.
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Presets saved: {presets.length}
                 </div>
               </CardContent>
             </Card>
