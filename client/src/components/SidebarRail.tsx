@@ -4,6 +4,7 @@ import { canAccessAnalytics, canManageGlobalUsers } from "@/lib/authz";
 import { useLocation } from "wouter";
 import {
   BarChart3,
+  ClipboardList,
   Inbox,
   LayoutGrid,
   MessageSquare,
@@ -26,6 +27,7 @@ const navItems = [
 const bottomItems = [
   { id: "admin-tickets", icon: Inbox, label: "Admin Tickets", path: "/workspace/admin-tickets" },
   { id: "admin-users", icon: Shield, label: "Admin Users", path: "/workspace/admin-users" },
+  { id: "audit", icon: ClipboardList, label: "Audit", path: "/workspace/audit" },
   { id: "support", icon: LifeBuoy, label: "Support", path: "/workspace/support" },
   { id: "settings", icon: Settings, label: "Settings", path: "/workspace/settings" },
 ];
@@ -35,7 +37,7 @@ export default function SidebarRail() {
   const { user } = useAuth();
   const visibleNavItems = navItems.filter((item) => item.id !== "analytics" || canAccessAnalytics(user));
   const visibleBottomItems = bottomItems.filter((item) => {
-    if (item.id === "admin-users" || item.id === "admin-tickets") return canManageGlobalUsers(user);
+    if (item.id === "admin-users" || item.id === "admin-tickets" || item.id === "audit") return canManageGlobalUsers(user);
     return true;
   });
 

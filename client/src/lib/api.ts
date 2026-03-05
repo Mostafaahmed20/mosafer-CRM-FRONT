@@ -696,6 +696,470 @@ export const analyticsApi = {
   },
 };
 
+export type AuditActor = {
+  _id: string;
+  username: string;
+  email?: string;
+};
+
+export type AuditEntityRef = {
+  _id: string;
+  title?: string;
+};
+
+export type AuditTargetRef = {
+  type?: string;
+  _id?: string;
+  title?: string;
+};
+
+export type AuditEvent = {
+  _id: string;
+  createdAt: string;
+  action: string;
+  category?: string;
+  message: string;
+  actor?: AuditActor;
+  board?: AuditEntityRef;
+  card?: AuditEntityRef;
+  list?: AuditEntityRef;
+  target?: AuditTargetRef;
+  channel?: string;
+  requestId?: string;
+  ip?: string;
+  meta?: Record<string, unknown>;
+};
+
+export type AuditLogQuery = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  action?: string;
+  boardId?: string;
+  actorId?: string;
+  channel?: string;
+  cardId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: "newest" | "oldest";
+  seed?: number;
+};
+
+export type AuditLogResponse = {
+  items: AuditEvent[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+  };
+  source: "api" | "mock";
+};
+
+export type AuditFilterOptions = {
+  actions: string[];
+  channels: string[];
+  boards: AuditEntityRef[];
+  users: AuditActor[];
+};
+
+const MOCK_AUDIT_ACTIONS = [
+  "card.created",
+  "card.updated",
+  "card.moved",
+  "card.archived",
+  "comment.added",
+  "attachment.uploaded",
+  "member.added",
+  "member.removed",
+  "handover.updated",
+  "board.settings_updated",
+];
+
+const MOCK_AUDIT_CHANNELS = ["Email", "WhatsApp", "Portal", "Chat", "Phone", "API"];
+
+const MOCK_AUDIT_BOARDS: AuditEntityRef[] = [
+  { _id: "board_blue_sky", title: "Blue Sky" },
+  { _id: "board_sahara_ops", title: "Sahara Ops" },
+  { _id: "board_hotels_emea", title: "Hotels EMEA" },
+  { _id: "board_vip_desk", title: "VIP Desk" },
+];
+
+const MOCK_AUDIT_USERS: AuditActor[] = [
+  { _id: "u_mostafa", username: "Mostafa", email: "mostafa@crm.local" },
+  { _id: "u_sara", username: "Sara", email: "sara@crm.local" },
+  { _id: "u_kareem", username: "Kareem", email: "kareem@crm.local" },
+  { _id: "u_aya", username: "Aya", email: "aya@crm.local" },
+  { _id: "u_nour", username: "Nour", email: "nour@crm.local" },
+];
+
+const MOCK_AUDIT_CARDS: AuditEntityRef[] = [
+  { _id: "card_req_001", title: "JUBA REQ" },
+  { _id: "card_req_002", title: "VIP amendment - DXB" },
+  { _id: "card_req_003", title: "Reconfirmation BCN booking" },
+  { _id: "card_req_004", title: "Cancellation CAI - group" },
+];
+
+function makeAuditMessage(action: string, card?: AuditEntityRef, board?: AuditEntityRef) {
+  const cardLabel = card?.title || card?._id || "card";
+  const boardLabel = board?.title || board?._id || "board";
+  switch (action) {
+    case "card.created":
+      return `Created ${cardLabel} in ${boardLabel}`;
+    case "card.updated":
+      return `Updated fields on ${cardLabel}`;
+    case "card.moved":
+      return `Moved ${cardLabel} between lists`;
+    case "card.archived":
+      return `Archived ${cardLabel}`;
+    case "comment.added":
+      return `Added comment on ${cardLabel}`;
+    case "attachment.uploaded":
+      return `Uploaded attachment to ${cardLabel}`;
+    case "member.added":
+      return `Added member to ${boardLabel}`;
+    case "member.removed":
+      return `Removed member from ${boardLabel}`;
+    case "handover.updated":
+      return `Updated shift handover details on ${cardLabel}`;
+    case "board.settings_updated":
+      return `Updated board settings for ${boardLabel}`;
+    default:
+      return `Performed ${action}`;
+  }
+}
+
+function generateMockAuditEvents(seed = Date.now()): AuditEvent[] {
+  const now = seed || Date.now();
+  const events: AuditEvent[] = [];
+
+  for (let i = 0; i < 140; i += 1) {
+    const action = MOCK_AUDIT_ACTIONS[i % MOCK_AUDIT_ACTIONS.length];
+    const actor = MOCK_AUDIT_USERS[i % MOCK_AUDIT_USERS.length];
+    const board = MOCK_AUDIT_BOARDS[i % MOCK_AUDIT_BOARDS.length];
+    const card = MOCK_AUDIT_CARDS[i % MOCK_AUDIT_CARDS.length];
+    const channel = MOCK_AUDIT_CHANNELS[i % MOCK_AUDIT_CHANNELS.length];
+    const createdAt = new Date(now - i * 25 * 60 * 1000).toISOString();
+    const hasCard = action.startsWith("card.") || action === "comment.added" || action === "attachment.uploaded" || action === "handover.updated";
+
+    events.push({
+      _id: `mock_audit_${i + 1}`,
+      createdAt,
+      action,
+      category: action.split(".")[0],
+      message: makeAuditMessage(action, hasCard ? card : undefined, board),
+      actor,
+      board,
+      card: hasCard ? card : undefined,
+      list: hasCard ? { _id: `list_${(i % 3) + 1}`, title: ["Quoted", "In Progress", "Done"][i % 3] } : undefined,
+      target: hasCard
+        ? { type: "card", _id: card._id, title: card.title }
+        : { type: "board", _id: board._id, title: board.title },
+      channel,
+      requestId: `req_${10000 + i}`,
+      ip: `10.0.0.${(i % 40) + 10}`,
+      meta: {
+        source: "mock",
+        boardId: board._id,
+        cardId: hasCard ? card._id : undefined,
+      },
+    });
+  }
+
+  return events;
+}
+
+function normalizeAuditEntity(input: any): AuditEntityRef | undefined {
+  if (!input) return undefined;
+  if (typeof input === "string") return { _id: input, title: input };
+  const id = String(input._id || input.id || "").trim();
+  if (!id) return undefined;
+  const title = String(input.title || input.name || input.label || "").trim();
+  return {
+    _id: id,
+    title: title || undefined,
+  };
+}
+
+function normalizeAuditActor(input: any): AuditActor | undefined {
+  if (!input) return undefined;
+  if (typeof input === "string") return { _id: input, username: input };
+  const id = String(input._id || input.id || "").trim();
+  const username = String(input.username || input.name || "").trim();
+  if (!id && !username) return undefined;
+  return {
+    _id: id || username,
+    username: username || id,
+    email: typeof input.email === "string" ? input.email : undefined,
+  };
+}
+
+function normalizeAuditEvent(input: any): AuditEvent {
+  const createdAt = String(input?.createdAt || input?.at || input?.timestamp || new Date().toISOString());
+  const action = String(input?.action || input?.type || "unknown");
+  const board = normalizeAuditEntity(input?.board);
+  const card = normalizeAuditEntity(input?.card);
+  const list = normalizeAuditEntity(input?.list);
+  const actor = normalizeAuditActor(input?.actor || input?.user);
+
+  const targetInput = input?.target;
+  const target: AuditTargetRef | undefined = targetInput
+    ? {
+        type: typeof targetInput?.type === "string" ? targetInput.type : undefined,
+        _id: String(targetInput?._id || targetInput?.id || "").trim() || undefined,
+        title: String(targetInput?.title || targetInput?.name || "").trim() || undefined,
+      }
+    : card
+      ? { type: "card", _id: card._id, title: card.title }
+      : board
+        ? { type: "board", _id: board._id, title: board.title }
+        : undefined;
+
+  const message = String(input?.message || input?.summary || makeAuditMessage(action, card, board));
+
+  return {
+    _id: String(input?._id || input?.id || `${createdAt}_${action}_${Math.random().toString(36).slice(2, 8)}`),
+    createdAt,
+    action,
+    category: typeof input?.category === "string" ? input.category : action.split(".")[0],
+    message,
+    actor,
+    board,
+    card,
+    list,
+    target,
+    channel: typeof input?.channel === "string" ? input.channel : undefined,
+    requestId: typeof input?.requestId === "string" ? input.requestId : undefined,
+    ip: typeof input?.ip === "string" ? input.ip : undefined,
+    meta: input?.meta && typeof input.meta === "object" ? input.meta : undefined,
+  };
+}
+
+function applyAuditFilters(events: AuditEvent[], query: AuditLogQuery) {
+  const q = String(query.q || "").trim().toLowerCase();
+  return events.filter((event) => {
+    const matchesQ =
+      !q ||
+      [
+        event.message,
+        event.action,
+        event.category,
+        event.actor?.username,
+        event.actor?.email,
+        event.board?.title,
+        event.card?.title,
+        event.card?._id,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q));
+    if (!matchesQ) return false;
+
+    if (query.action && event.action !== query.action) return false;
+    if (query.boardId && event.board?._id !== query.boardId) return false;
+    if (query.actorId && event.actor?._id !== query.actorId) return false;
+    if (query.channel && event.channel !== query.channel) return false;
+    if (query.cardId && event.card?._id !== query.cardId) return false;
+
+    if (query.dateFrom) {
+      const from = new Date(query.dateFrom).getTime();
+      const at = new Date(event.createdAt).getTime();
+      if (!Number.isNaN(from) && at < from) return false;
+    }
+    if (query.dateTo) {
+      const to = new Date(query.dateTo).getTime();
+      const at = new Date(event.createdAt).getTime();
+      if (!Number.isNaN(to) && at > to + 24 * 60 * 60 * 1000 - 1) return false;
+    }
+    return true;
+  });
+}
+
+function buildMockAuditLogResponse(query: AuditLogQuery = {}): AuditLogResponse {
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.min(200, Math.max(1, Number(query.limit || 30)));
+  const sort = query.sort === "oldest" ? "oldest" : "newest";
+  const all = generateMockAuditEvents(query.seed || Date.now());
+  const filtered = applyAuditFilters(all, query).sort((a, b) => {
+    const left = new Date(a.createdAt).getTime();
+    const right = new Date(b.createdAt).getTime();
+    return sort === "oldest" ? left - right : right - left;
+  });
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const start = (page - 1) * limit;
+  const items = filtered.slice(start, start + limit);
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+    },
+    source: "mock",
+  };
+}
+
+function buildMockAuditFilterOptions(query: AuditLogQuery = {}): AuditFilterOptions {
+  const filtered = applyAuditFilters(generateMockAuditEvents(query.seed || Date.now()), {
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  });
+
+  const actions = Array.from(new Set(filtered.map((item) => item.action).filter(Boolean))).sort();
+  const channels = Array.from(new Set(filtered.map((item) => item.channel).filter(Boolean) as string[])).sort();
+  const boards = Array.from(
+    new Map(filtered.filter((item) => item.board?._id).map((item) => [item.board!._id, item.board!])).values()
+  ).sort((a, b) => String(a.title || a._id).localeCompare(String(b.title || b._id)));
+  const users = Array.from(
+    new Map(filtered.filter((item) => item.actor?._id).map((item) => [item.actor!._id, item.actor!])).values()
+  ).sort((a, b) => a.username.localeCompare(b.username));
+
+  return {
+    actions,
+    channels,
+    boards,
+    users,
+  };
+}
+
+function normalizeAuditLogResponse(input: any, query: AuditLogQuery = {}): AuditLogResponse {
+  const page = Math.max(1, Number(input?.pagination?.page || input?.page || query.page || 1));
+  const limit = Math.min(200, Math.max(1, Number(input?.pagination?.limit || input?.limit || query.limit || 30)));
+  const rawItems = Array.isArray(input)
+    ? input
+    : Array.isArray(input?.items)
+      ? input.items
+      : Array.isArray(input?.data)
+        ? input.data
+        : Array.isArray(input?.events)
+          ? input.events
+          : Array.isArray(input?.logs)
+            ? input.logs
+            : [];
+  const items = rawItems.map(normalizeAuditEvent);
+  const total = Math.max(items.length, Number(input?.pagination?.total || input?.total || items.length));
+  const totalPages = Math.max(1, Number(input?.pagination?.totalPages || input?.totalPages || Math.ceil(total / limit)));
+  const hasNext =
+    typeof input?.pagination?.hasNext === "boolean"
+      ? input.pagination.hasNext
+      : typeof input?.hasNext === "boolean"
+        ? input.hasNext
+        : page < totalPages;
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNext,
+    },
+    source: "api",
+  };
+}
+
+function normalizeAuditFilterOptions(input: any, query: AuditLogQuery = {}): AuditFilterOptions {
+  const fallback = buildMockAuditFilterOptions(query);
+  const normalizeList = (values: any[]) =>
+    Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean))).sort();
+
+  const actions = Array.isArray(input?.actions) ? normalizeList(input.actions) : fallback.actions;
+  const channels = Array.isArray(input?.channels) ? normalizeList(input.channels) : fallback.channels;
+  const boards = Array.isArray(input?.boards)
+    ? input.boards.map(normalizeAuditEntity).filter(Boolean) as AuditEntityRef[]
+    : fallback.boards;
+  const users = Array.isArray(input?.users)
+    ? input.users.map(normalizeAuditActor).filter(Boolean) as AuditActor[]
+    : fallback.users;
+
+  return {
+    actions,
+    channels,
+    boards,
+    users,
+  };
+}
+
+function buildAuditQueryParams(query: AuditLogQuery = {}) {
+  const q = new URLSearchParams();
+  if (query.page) q.set("page", String(query.page));
+  if (query.limit) q.set("limit", String(query.limit));
+  if (query.q) q.set("q", query.q);
+  if (query.action) q.set("action", query.action);
+  if (query.boardId) q.set("boardId", query.boardId);
+  if (query.actorId) q.set("actorId", query.actorId);
+  if (query.channel) q.set("channel", query.channel);
+  if (query.cardId) q.set("cardId", query.cardId);
+  if (query.dateFrom) q.set("dateFrom", query.dateFrom);
+  if (query.dateTo) q.set("dateTo", query.dateTo);
+  if (query.sort) q.set("sort", query.sort);
+  return q.toString();
+}
+
+function isAuditNetworkLikeError(error: any) {
+  const message = String(error?.message || "");
+  return (
+    message.includes("Failed to fetch") ||
+    message.includes("NetworkError") ||
+    message.includes("fetch")
+  );
+}
+
+async function tryAuditApi<T>(
+  request: () => Promise<Response>,
+  fallback: () => T | Promise<T>
+): Promise<T> {
+  try {
+    const response = await request();
+    if ((response.status === 404 || response.status === 501) && !IS_PROD) {
+      return await fallback();
+    }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      throw new Error(error.message || "Request failed");
+    }
+    return (await response.json()) as T;
+  } catch (error: any) {
+    if (!IS_PROD && (isAuditNetworkLikeError(error) || !API_URL)) {
+      return await fallback();
+    }
+    throw error;
+  }
+}
+
+export const auditApi = {
+  getLogs: async (query: AuditLogQuery = {}) => {
+    const qs = buildAuditQueryParams(query);
+    const raw = await tryAuditApi<any>(
+      () =>
+        fetch(`${API_URL}/api/audit${qs ? `?${qs}` : ""}`, {
+          headers: getAuthHeaders(),
+        }),
+      () => buildMockAuditLogResponse(query)
+    );
+
+    return Array.isArray(raw) || raw?.source !== "mock"
+      ? normalizeAuditLogResponse(raw, query)
+      : (raw as AuditLogResponse);
+  },
+
+  getFilterOptions: async (query: Pick<AuditLogQuery, "dateFrom" | "dateTo" | "seed"> = {}) => {
+    const qs = buildAuditQueryParams(query);
+    const raw = await tryAuditApi<any>(
+      () =>
+        fetch(`${API_URL}/api/audit/filters${qs ? `?${qs}` : ""}`, {
+          headers: getAuthHeaders(),
+        }),
+      () => buildMockAuditFilterOptions(query)
+    );
+    return normalizeAuditFilterOptions(raw, query);
+  },
+};
+
 export type GlobalUserRole = "admin" | "user";
 
 export type AdminUserRecord = {

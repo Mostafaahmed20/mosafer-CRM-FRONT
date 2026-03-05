@@ -4,15 +4,16 @@ import { Button } from "@/components/ui/button";
 import SidebarRail from "@/components/SidebarRail";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessAnalytics, canManageGlobalUsers } from "@/lib/authz";
-import { BarChart3, LifeBuoy, MessageSquare, Search, Settings, Shield, Users } from "lucide-react";
+import { BarChart3, ClipboardList, LifeBuoy, MessageSquare, Search, Settings, Shield, Users } from "lucide-react";
 import AdminTicketsInbox from "./AdminTicketsInbox";
 import AdminUsersWorkspace from "./AdminUsersWorkspace";
 import CustomersWorkspace from "./CustomersWorkspace";
 import SettingsWorkspace from "./SettingsWorkspace";
 
 const AnalyticsWorkspace = lazy(() => import("./AnalyticsWorkspace"));
+const AuditWorkspace = lazy(() => import("./AuditWorkspace"));
 
-type FeatureKey = "analytics" | "admin-tickets" | "admin-users" | "customers" | "search" | "chat" | "support" | "settings";
+type FeatureKey = "analytics" | "admin-tickets" | "admin-users" | "audit" | "customers" | "search" | "chat" | "support" | "settings";
 
 const FEATURE_META: Record<FeatureKey, { title: string; description: string; icon: typeof Users }> = {
   analytics: {
@@ -29,6 +30,11 @@ const FEATURE_META: Record<FeatureKey, { title: string; description: string; ico
     title: "Admin Tickets",
     description: "Global admin inbox for tickets across all boards with server-side filters and detail fetch.",
     icon: Shield,
+  },
+  audit: {
+    title: "Audit",
+    description: "Global audit timeline with advanced filters and card event playback.",
+    icon: ClipboardList,
   },
   customers: {
     title: "Customers",
@@ -109,7 +115,7 @@ export default function WorkspaceFeaturePage() {
     );
   }
 
-  if ((feature === "admin-users" || feature === "admin-tickets") && !authLoading && isAuthenticated && !canManageGlobalUsers(user)) {
+  if ((feature === "admin-users" || feature === "admin-tickets" || feature === "audit") && !authLoading && isAuthenticated && !canManageGlobalUsers(user)) {
     return (
       <div className="min-h-screen bg-[#F5F7FB] flex">
         <SidebarRail />
@@ -118,7 +124,11 @@ export default function WorkspaceFeaturePage() {
             <div className="rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
               <div className="text-sm text-amber-700">Access restricted</div>
               <h1 className="mt-1 text-xl font-semibold text-slate-900">
-                {feature === "admin-tickets" ? "Admin tickets inbox is restricted" : "Admin user management is restricted"}
+                {feature === "admin-tickets"
+                  ? "Admin tickets inbox is restricted"
+                  : feature === "audit"
+                    ? "Audit workspace is restricted"
+                    : "Admin user management is restricted"}
               </h1>
               <p className="mt-2 text-sm text-slate-600">
                 This workspace is limited to global admins (`role: "admin"`). Backend authorization should enforce the same rule.
@@ -144,6 +154,25 @@ export default function WorkspaceFeaturePage() {
 
   if (feature === "admin-tickets") {
     return <AdminTicketsInbox />;
+  }
+
+  if (feature === "audit") {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F5F7FB] flex">
+            <SidebarRail />
+            <div className="flex-1 p-6">
+              <div className="max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-sm text-slate-600">
+                Loading audit workspace...
+              </div>
+            </div>
+          </div>
+        }
+      >
+        <AuditWorkspace />
+      </Suspense>
+    );
   }
 
   if (feature === "customers") {
