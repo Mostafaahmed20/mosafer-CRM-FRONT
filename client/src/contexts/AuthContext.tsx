@@ -27,6 +27,69 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
+export class AuthApiError extends Error {
+  code?: string;
+  recoveryUrl?: string;
+  email?: string;
+  status?: number;
+
+  constructor(
+    message: string,
+    options?: { code?: string; recoveryUrl?: string; email?: string; status?: number }
+  ) {
+    super(message);
+    this.name = "AuthApiError";
+    this.code = options?.code;
+    this.recoveryUrl = options?.recoveryUrl;
+    this.email = options?.email;
+    this.status = options?.status;
+  }
+}
+
+export function isAuthApiError(error: unknown): error is AuthApiError {
+  return error instanceof AuthApiError;
+}
+
+function pickStringPath(input: unknown, path: string[]): string | undefined {
+  let current: unknown = input;
+  for (const segment of path) {
+    if (typeof current !== "object" || current === null) return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  if (typeof current !== "string") return undefined;
+  const value = current.trim();
+  return value || undefined;
+}
+
+async function throwAuthError(response: Response, fallbackMessage: string): Promise<never> {
+  const body = await response.json().catch(() => null);
+
+  const message =
+    pickStringPath(body, ["message"]) ||
+    pickStringPath(body, ["error"]) ||
+    pickStringPath(body, ["details", "message"]) ||
+    fallbackMessage;
+  const code =
+    pickStringPath(body, ["code"]) ||
+    pickStringPath(body, ["errorCode"]) ||
+    pickStringPath(body, ["details", "code"]);
+  const recoveryUrl =
+    pickStringPath(body, ["recoveryUrl"]) ||
+    pickStringPath(body, ["data", "recoveryUrl"]) ||
+    pickStringPath(body, ["details", "recoveryUrl"]);
+  const email =
+    pickStringPath(body, ["email"]) ||
+    pickStringPath(body, ["data", "email"]) ||
+    pickStringPath(body, ["details", "email"]);
+
+  throw new AuthApiError(message, {
+    code,
+    recoveryUrl,
+    email,
+    status: response.status,
+  });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
@@ -50,10 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Login failed");
-    }
+    if (!response.ok) await throwAuthError(response, "Login failed");
 
     const data = await response.json();
     setToken(data.token);
@@ -69,10 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ idToken }),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Google login failed");
-    }
+    if (!response.ok) await throwAuthError(response, "Google login failed");
 
     const data = await response.json();
     setToken(data.token);
@@ -88,10 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, email, password }),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Registration failed");
-    }
+    if (!response.ok) await throwAuthError(response, "Registration failed");
   };
 
   const verifyEmail = async (tokenValue: string) => {
@@ -100,10 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: tokenValue }),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Email verification failed");
-    }
+    if (!response.ok) await throwAuthError(response, "Email verification failed");
   };
 
   const resendVerification = async (email: string) => {
@@ -112,10 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Failed to resend verification email");
-    }
+    if (!response.ok) await throwAuthError(response, "Failed to resend verification email");
   };
 
   const requestPasswordReset = async (email: string) => {
@@ -124,10 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Failed to send reset email");
-    }
+    if (!response.ok) await throwAuthError(response, "Failed to send reset email");
   };
 
   const resetPassword = async (tokenValue: string, password: string) => {
@@ -136,10 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: tokenValue, password }),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Failed to reset password");
-    }
+    if (!response.ok) await throwAuthError(response, "Failed to reset password");
   };
 
   const logout = () => {

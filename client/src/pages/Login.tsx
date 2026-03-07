@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
-import { useAuth } from "@/contexts/AuthContext";
+import { isAuthApiError, useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Layers, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+
+type LoginHint =
+  | { type: "google_login"; message: string }
+  | { type: "verify_email"; message: string; email: string };
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -13,19 +17,40 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hint, setHint] = useState<LoginHint | null>(null);
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setHint(null);
 
     try {
       await login(email, password);
       toast.success("Welcome back!");
       navigate("/dashboard");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Login failed");
+      if (isAuthApiError(error)) {
+        if (error.code === "USE_GOOGLE_LOGIN") {
+          setHint({
+            type: "google_login",
+            message: error.message || "This account uses Google sign-in.",
+          });
+          toast.error("This account uses Google. Continue with Google.");
+        } else if (error.code === "EMAIL_NOT_VERIFIED") {
+          setHint({
+            type: "verify_email",
+            message: error.message || "Please verify your email first.",
+            email: error.email || email,
+          });
+          toast.error("Email not verified.");
+        } else {
+          toast.error(error.message || "Login failed");
+        }
+      } else {
+        toast.error(error instanceof Error ? error.message : "Login failed");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -146,6 +171,37 @@ export default function Login() {
                 )}
               </Button>
             </form>
+
+            {hint?.type === "google_login" && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs text-amber-900">{hint.message}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-2 h-9 w-full border-amber-300 text-amber-900 hover:bg-amber-100"
+                  disabled={!googleClientId}
+                  onClick={() => {
+                    googleBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                >
+                  Continue with Google
+                </Button>
+              </div>
+            )}
+
+            {hint?.type === "verify_email" && (
+              <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                <p className="text-xs text-sky-900">{hint.message}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-2 h-9 w-full border-sky-300 text-sky-900 hover:bg-sky-100"
+                  onClick={() => navigate(`/verify-email?email=${encodeURIComponent(hint.email)}`)}
+                >
+                  Verify email
+                </Button>
+              </div>
+            )}
 
             <div className="mt-6 text-center">
               <button
