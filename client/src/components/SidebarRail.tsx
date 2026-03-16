@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import {
   BarChart3,
   ClipboardList,
+  ClipboardPenLine,
   Inbox,
   LayoutGrid,
   MessageSquare,
@@ -18,6 +19,7 @@ import {
 const navItems = [
   { id: "inbox", icon: Inbox, label: "Tickets", path: "/tickets" },
   { id: "boards", icon: LayoutGrid, label: "Boards", path: "/dashboard" },
+  { id: "daily-ops", icon: ClipboardPenLine, label: "Daily Ops", path: "/workspace/daily-ops" },
   { id: "analytics", icon: BarChart3, label: "Analytics", path: "/workspace/analytics" },
   { id: "customers", icon: Users, label: "Customers", path: "/workspace/customers" },
   { id: "search", icon: Search, label: "Search", path: "/workspace/search" },
@@ -42,25 +44,29 @@ export default function SidebarRail() {
   });
 
   return (
-    <aside className="w-16 bg-white border-r border-slate-200 flex flex-col items-center py-4 gap-4">
+    <aside className="flex w-[76px] flex-col items-center border-r border-[#14243A] bg-[#091525] px-3 py-5 text-white">
       <button
         type="button"
         title="Dashboard"
         onClick={() => setLocation("/dashboard")}
-        className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold shadow-sm"
+        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#17B897] via-[#1493B8] to-[#2063E9] text-base font-bold text-white shadow-[0_18px_34px_rgba(23,184,151,0.28)]"
       >
         T
       </button>
 
-      <div className="flex flex-col items-center gap-3 mt-2">
+      <div className="mt-5 h-px w-10 bg-white/10" />
+
+      <div className="mt-5 flex flex-col items-center gap-3">
         {visibleNavItems.map((item) => (
           <button
             key={item.id}
             title={item.label}
             onClick={() => item.path && setLocation(item.path)}
             className={cn(
-              "h-10 w-10 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition",
-              item.path && location.startsWith(item.path) && "bg-slate-900 text-white hover:bg-slate-900 hover:text-white"
+              "flex h-11 w-11 items-center justify-center rounded-2xl border border-transparent text-[#88A0C3] transition hover:border-white/10 hover:bg-white/6 hover:text-white",
+              item.path &&
+                location.startsWith(item.path) &&
+                "border-[#2B6FE8]/50 bg-[#132239] text-white shadow-[0_14px_30px_rgba(32,99,233,0.22)] hover:border-[#2B6FE8]/60 hover:bg-[#132239] hover:text-white"
             )}
           >
             <item.icon className="w-5 h-5" />
@@ -68,7 +74,9 @@ export default function SidebarRail() {
         ))}
       </div>
 
-      <div className="mt-auto flex flex-col items-center gap-3">
+      <div className="mt-auto h-px w-10 bg-white/10" />
+
+      <div className="mt-5 flex flex-col items-center gap-3">
         {visibleBottomItems.map((item) => (
           <button
             key={item.id}
@@ -76,8 +84,9 @@ export default function SidebarRail() {
             title={item.label}
             onClick={() => setLocation(item.path)}
             className={cn(
-              "h-10 w-10 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition",
-              location.startsWith(item.path) && "bg-slate-900 text-white hover:bg-slate-900 hover:text-white"
+              "flex h-11 w-11 items-center justify-center rounded-2xl border border-transparent text-[#88A0C3] transition hover:border-white/10 hover:bg-white/6 hover:text-white",
+              location.startsWith(item.path) &&
+                "border-[#2B6FE8]/50 bg-[#132239] text-white shadow-[0_14px_30px_rgba(32,99,233,0.22)] hover:border-[#2B6FE8]/60 hover:bg-[#132239] hover:text-white"
             )}
           >
             <item.icon className="w-5 h-5" />

@@ -11,6 +11,9 @@ import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { useSocket } from "@/contexts/SocketContext";
 
+const LOCAL_NOTIFICATION_STORAGE_KEY = "crm_notifications_v1";
+const NOTIFICATIONS_CHANGED_EVENT = "crm:notifications-changed";
+
 export function NotificationBell() {
   const [, setLocation] = useLocation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -90,6 +93,13 @@ export function NotificationBell() {
       markAsRead(notification._id);
     }
 
+    if (notification.board?._id === "daily-ops") {
+      const taskQuery = notification.card?._id ? `?task=${encodeURIComponent(notification.card._id)}` : "";
+      setLocation(`/workspace/daily-ops${taskQuery}`);
+      setIsOpen(false);
+      return;
+    }
+
     // Navigate to card or board
     if (notification.card && notification.board) {
       setLocation(`/board/${notification.board._id}?card=${notification.card._id}`);
@@ -108,6 +118,27 @@ export function NotificationBell() {
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const handleNotificationChange = () => {
+      void fetchUnreadCount();
+      if (isOpen) {
+        void fetchNotifications();
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== LOCAL_NOTIFICATION_STORAGE_KEY && event.key !== "user") return;
+      handleNotificationChange();
+    };
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, handleNotificationChange);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, handleNotificationChange);
+    };
+  }, [isOpen]);
 
   // Realtime notifications
   useEffect(() => {

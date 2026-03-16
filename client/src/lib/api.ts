@@ -2113,43 +2113,149 @@ export type Notification = {
   createdAt: string;
 };
 
+const LOCAL_NOTIFICATION_STORAGE_KEY = "crm_notifications_v1";
+const NOTIFICATIONS_CHANGED_EVENT = "crm:notifications-changed";
+
+function readLocalNotifications(): Notification[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_NOTIFICATION_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed as Notification[];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalNotifications(notifications: Notification[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LOCAL_NOTIFICATION_STORAGE_KEY, JSON.stringify(notifications));
+  window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED_EVENT));
+}
+
+function getStoredUserId() {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = localStorage.getItem("user");
+    const parsed = raw ? JSON.parse(raw) : null;
+    return String(parsed?._id || "");
+  } catch {
+    return "";
+  }
+}
+
+async function tryNotificationApi<T>(request: () => Promise<Response>, fallback: () => T | Promise<T>): Promise<T> {
+  try {
+    const response = await request();
+    if (response.status === 404 || response.status === 501) {
+      return await fallback();
+    }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      throw new Error(error.message || "Request failed");
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json();
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    const isNetworkLike =
+      message.includes("Failed to fetch") ||
+      message.includes("NetworkError") ||
+      message.includes("fetch");
+    if (isNetworkLike || !API_URL) {
+      return await fallback();
+    }
+    throw error;
+  }
+}
+
 // Notification API
 export const notificationApi = {
   getAll: async () => {
-    const response = await fetch(`${API_URL}/api/notifications`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
+    return tryNotificationApi<Notification[]>(
+      () =>
+        fetch(`${API_URL}/api/notifications`, {
+          headers: getAuthHeaders(),
+        }),
+      () => {
+        const currentUserId = getStoredUserId();
+        return readLocalNotifications()
+          .filter((notification) => !currentUserId || notification.recipient === currentUserId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
+    );
   },
 
   getUnreadCount: async () => {
-    const response = await fetch(`${API_URL}/api/notifications/unread-count`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
+    return tryNotificationApi<{ count: number }>(
+      () =>
+        fetch(`${API_URL}/api/notifications/unread-count`, {
+          headers: getAuthHeaders(),
+        }),
+      () => {
+        const currentUserId = getStoredUserId();
+        const count = readLocalNotifications().filter(
+          (notification) => (!currentUserId || notification.recipient === currentUserId) && !notification.read
+        ).length;
+        return { count };
+      }
+    );
   },
 
   markAsRead: async (id: string) => {
-    const response = await fetch(`${API_URL}/api/notifications/${id}/read`, {
-      method: "PATCH",
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
+    return tryNotificationApi<Notification>(
+      () =>
+        fetch(`${API_URL}/api/notifications/${id}/read`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+        }),
+      () => {
+        const notifications = readLocalNotifications();
+        let updated: Notification | undefined;
+        const next = notifications.map((notification) => {
+          if (notification._id !== id) return notification;
+          updated = { ...notification, read: true };
+          return updated;
+        });
+        writeLocalNotifications(next);
+        if (!updated) throw new Error("Notification not found");
+        return updated;
+      }
+    );
   },
 
   markAllAsRead: async () => {
-    const response = await fetch(`${API_URL}/api/notifications/mark-all-read`, {
-      method: "PATCH",
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
+    return tryNotificationApi<{ success: true }>(
+      () =>
+        fetch(`${API_URL}/api/notifications/mark-all-read`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+        }),
+      () => {
+        const currentUserId = getStoredUserId();
+        const next = readLocalNotifications().map((notification) =>
+          !currentUserId || notification.recipient === currentUserId
+            ? { ...notification, read: true }
+            : notification
+        );
+        writeLocalNotifications(next);
+        return { success: true as const };
+      }
+    );
   },
 
   delete: async (id: string) => {
-    const response = await fetch(`${API_URL}/api/notifications/${id}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
+    return tryNotificationApi<{ success: true }>(
+      () =>
+        fetch(`${API_URL}/api/notifications/${id}`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }),
+      () => {
+        writeLocalNotifications(readLocalNotifications().filter((notification) => notification._id !== id));
+        return { success: true as const };
+      }
+    );
   },
 };

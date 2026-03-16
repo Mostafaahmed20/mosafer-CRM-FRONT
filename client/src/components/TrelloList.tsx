@@ -4,7 +4,17 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { List, Card, BoardRole, CardCreateData, canEditList, canDeleteList, canCreateCard, canDragCards } from "@/lib/api";
 import { TrelloCard } from "./TrelloCard";
-import { Plus, MoreHorizontal, Trash2, Archive } from "lucide-react";
+import {
+  Plus,
+  MoreHorizontal,
+  Trash2,
+  Archive,
+  Building2,
+  ClipboardPenLine,
+  CalendarDays,
+  CircleDashed,
+  Sparkles,
+} from "lucide-react";
 import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -97,6 +107,20 @@ export function TrelloList({
     setIsEditingTitle(false);
   };
 
+  const canSubmitRequest =
+    Boolean(requestTitle.trim()) && Boolean(requestAgency.trim()) && Boolean(requestSource.trim());
+
+  const formatPreviewDate = (value: string) => {
+    if (!value) return "Not set";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -104,23 +128,30 @@ export function TrelloList({
       className={`ticket-list animate-fade-in ${isOverDropZone ? "drop-zone-active" : ""}`}
     >
       <div className="ticket-list-header" {...attributes} {...listeners}>
-        {isEditingTitle ? (
-          <Input
-            value={editedTitle}
-            onChange={(e) => setEditedTitle(e.target.value)}
-            onBlur={handleSaveTitle}
-            onKeyDown={(e) => e.key === "Enter" && handleSaveTitle()}
-            className="h-7 text-sm font-semibold bg-white"
-            autoFocus
-          />
-        ) : (
-          <h3
-            className={`ticket-list-title flex-1 ${canEditList(userRole) ? "cursor-pointer" : ""}`}
-            onClick={() => canEditList(userRole) && setIsEditingTitle(true)}
-          >
-            {list.title}
-          </h3>
-        )}
+        <div className="min-w-0 flex-1">
+          {isEditingTitle ? (
+            <Input
+              value={editedTitle}
+              onChange={(e) => setEditedTitle(e.target.value)}
+              onBlur={handleSaveTitle}
+              onKeyDown={(e) => e.key === "Enter" && handleSaveTitle()}
+              className="h-9 rounded-xl border-[#D9E5F4] bg-white text-sm font-semibold shadow-none"
+              autoFocus
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              <h3
+                className={`ticket-list-title min-w-0 flex-1 truncate ${canEditList(userRole) ? "cursor-pointer" : ""}`}
+                onClick={() => canEditList(userRole) && setIsEditingTitle(true)}
+              >
+                {list.title}
+              </h3>
+              <span className="rounded-full bg-[#EAF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#1E5ED8]">
+                {list.cards.length}
+              </span>
+            </div>
+          )}
+        </div>
 
         {canEditList(userRole) && (
           <DropdownMenu>
@@ -128,7 +159,7 @@ export function TrelloList({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 p-0 text-[#6B778C] hover:bg-[#DFE1E6]"
+                className="h-9 w-9 rounded-xl p-0 text-[#6B7C93] hover:bg-[#EAF2FF] hover:text-[#1E5ED8]"
               >
                 <MoreHorizontal className="w-4 h-4" />
               </Button>
@@ -164,7 +195,7 @@ export function TrelloList({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         <SortableContext
           items={list.cards.map((c) => c._id)}
           strategy={verticalListSortingStrategy}
@@ -179,6 +210,15 @@ export function TrelloList({
             />
           ))}
         </SortableContext>
+
+        {list.cards.length === 0 && (
+          <div className="mb-3 rounded-[20px] border border-dashed border-[#CAD8EB] bg-white/80 px-4 py-5 text-center">
+            <div className="text-sm font-medium text-[#486581]">No requests in this stage</div>
+            <div className="mt-1 text-xs text-[#829AB1]">
+              New intake, follow-up items, and handovers will appear here.
+            </div>
+          </div>
+        )}
 
         {canCreateCard(userRole) && (
           <button onClick={() => setIsIntakeOpen(true)} className="add-card-btn">
@@ -195,77 +235,231 @@ export function TrelloList({
           if (!open) resetIntake();
         }}
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>New Request Intake</DialogTitle>
+        <DialogContent className="w-[96vw] max-w-6xl overflow-hidden rounded-[30px] border border-[#D9E5F4] bg-[#F8FBFF] p-0 shadow-[0_38px_90px_rgba(15,23,42,0.2)]">
+          <DialogHeader className="border-b border-[#D9E5F4] bg-white px-7 py-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <DialogTitle className="text-[30px] font-semibold tracking-tight text-[#102A43]">
+                  New Ticket
+                </DialogTitle>
+                <p className="mt-2 max-w-2xl text-sm text-[#6B7C93]">
+                  Capture the customer request, route it into the right queue, and keep the booking context visible from the start.
+                </p>
+              </div>
+              <div className="rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                  Destination Queue
+                </div>
+                <div className="mt-1 text-sm font-semibold text-[#102A43]">{list.title}</div>
+                <div className="mt-1 text-xs text-[#6B7C93]">
+                  {list.cards.length} existing {list.cards.length === 1 ? "ticket" : "tickets"} in this stage
+                </div>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="md:col-span-2">
-              <label className="text-xs font-semibold text-[#64748B]">Request Title *</label>
-              <Input
-                value={requestTitle}
-                onChange={(e) => setRequestTitle(e.target.value)}
-                placeholder="Hotel + dates + pax"
-                className="mt-1"
-              />
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="bg-white px-7 py-7">
+              <div className="mb-6 rounded-[24px] border border-[#D9E5F4] bg-[#F8FBFF] p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <ClipboardPenLine className="h-4 w-4 text-[#2063E9]" />
+                  <div className="text-sm font-semibold text-[#102A43]">Ticket details</div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-5">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Agency / Company *
+                    </label>
+                    <Input
+                      value={requestAgency}
+                      onChange={(e) => setRequestAgency(e.target.value)}
+                      placeholder="Choose or enter the requesting company"
+                      className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Request Title *
+                    </label>
+                    <Input
+                      value={requestTitle}
+                      onChange={(e) => setRequestTitle(e.target.value)}
+                      placeholder="Hotel + dates + pax"
+                      className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 text-base shadow-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                        Request Type *
+                      </label>
+                      <select
+                        value={requestType}
+                        onChange={(e) => setRequestType(e.target.value)}
+                        className="mt-2 h-12 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43] outline-none"
+                      >
+                        {["Booking request", "Amendment", "Cancellation", "Service request", "Rate request"].map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                        Source *
+                      </label>
+                      <select
+                        value={requestSource}
+                        onChange={(e) => setRequestSource(e.target.value)}
+                        className="mt-2 h-12 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43] outline-none"
+                      >
+                        {["Email", "WhatsApp", "Portal", "Phone", "Agency"].map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-[#D9E5F4] bg-[#F8FBFF] p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-[#2063E9]" />
+                  <div className="text-sm font-semibold text-[#102A43]">Stay dates</div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Check-in
+                    </label>
+                    <Input
+                      type="date"
+                      value={requestCheckIn}
+                      onChange={(e) => setRequestCheckIn(e.target.value)}
+                      className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Check-out
+                    </label>
+                    <Input
+                      type="date"
+                      value={requestCheckOut}
+                      onChange={(e) => setRequestCheckOut(e.target.value)}
+                      className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-[#64748B]">Agency / Company *</label>
-              <Input
-                value={requestAgency}
-                onChange={(e) => setRequestAgency(e.target.value)}
-                placeholder="Travel agency name"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-[#64748B]">Source *</label>
-              <select
-                value={requestSource}
-                onChange={(e) => setRequestSource(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-              >
-                {["Email", "WhatsApp", "Portal", "Phone", "Agency"].map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-[#64748B]">Request Type *</label>
-              <select
-                value={requestType}
-                onChange={(e) => setRequestType(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-              >
-                {["Booking request", "Amendment", "Cancellation", "Service request", "Rate request"].map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-[#64748B]">Check-in</label>
-              <Input type="date" value={requestCheckIn} onChange={(e) => setRequestCheckIn(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-[#64748B]">Check-out</label>
-              <Input type="date" value={requestCheckOut} onChange={(e) => setRequestCheckOut(e.target.value)} className="mt-1" />
-            </div>
+
+            <aside className="border-t border-[#D9E5F4] bg-[#F7FAFE] px-6 py-7 xl:border-l xl:border-t-0">
+              <div className="mb-5 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[#2063E9]" />
+                <div className="text-sm font-semibold text-[#102A43]">Ticket preview</div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-[22px] border border-[#D9E5F4] bg-white p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#829AB1]">
+                    Subject
+                  </div>
+                  <div className="mt-2 text-sm font-semibold text-[#102A43]">
+                    {requestTitle.trim() || "Ticket subject will appear here"}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-[#EAF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#1E5ED8]">
+                      {requestType}
+                    </span>
+                    <span className="rounded-full bg-[#EEF8F6] px-2.5 py-1 text-[11px] font-semibold text-[#0F766E]">
+                      {requestSource}
+                    </span>
+                    <span className="rounded-full bg-[#FFF4E5] px-2.5 py-1 text-[11px] font-semibold text-[#B45309]">
+                      Requested
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#D9E5F4] bg-white p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-[#2063E9]" />
+                    <div className="text-sm font-semibold text-[#102A43]">Requester</div>
+                  </div>
+                  <div className="text-sm font-medium text-[#102A43]">
+                    {requestAgency.trim() || "No company selected yet"}
+                  </div>
+                  <div className="mt-2 text-xs text-[#6B7C93]">
+                    This company will be attached to the request intake record.
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#D9E5F4] bg-white p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <CircleDashed className="h-4 w-4 text-[#2063E9]" />
+                    <div className="text-sm font-semibold text-[#102A43]">Routing context</div>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-[#829AB1]">Stage</span>
+                      <span className="text-right font-medium text-[#102A43]">{list.title}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-[#829AB1]">Check-in</span>
+                      <span className="text-right font-medium text-[#102A43]">{formatPreviewDate(requestCheckIn)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-[#829AB1]">Check-out</span>
+                      <span className="text-right font-medium text-[#102A43]">{formatPreviewDate(requestCheckOut)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-[#829AB1]">Status on create</span>
+                      <span className="text-right font-medium text-[#102A43]">Requested</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-dashed border-[#C7D8EE] bg-[#FDFEFF] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                    Notes
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-[#6B7C93]">
+                    Keep the title short and searchable. Put the hotel, dates, and passenger count in the subject so the ticket is easy to triage later.
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={() => setIsIntakeOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="trello-btn-primary"
-              onClick={handleCreateRequest}
-              disabled={!requestTitle.trim() || !requestAgency.trim() || !requestSource.trim()}
-            >
-              Create Request
-            </Button>
+
+          <div className="flex items-center justify-between border-t border-[#D9E5F4] bg-white px-7 py-5">
+            <div className="text-sm text-[#6B7C93]">
+              {canSubmitRequest
+                ? "Ready to create this ticket."
+                : "Complete the required fields to create the ticket."}
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => setIsIntakeOpen(false)}
+                className="rounded-2xl px-4 text-[#486581] hover:bg-[#EFF4FB]"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="rounded-2xl bg-[#2063E9] px-5 text-white hover:bg-[#164FC0]"
+                onClick={handleCreateRequest}
+                disabled={!canSubmitRequest}
+              >
+                Create Request
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -51,6 +51,7 @@ export function TrelloCard({
   const status = card.status || "Requested";
   const priority = card.priority || "Medium";
   const requester = card.requester || "Unknown requester";
+  const agencyName = card.agencyName?.trim();
   const bookingRef = card.bookingRef?.trim();
   const hotelName = card.hotelName?.trim();
   const supplierConf = card.supplierConfirmationNumber?.trim();
@@ -79,12 +80,12 @@ export function TrelloCard({
       : "is-requested";
   const priorityColor =
     priority === "Urgent"
-      ? "bg-red-100 text-red-700"
+      ? "border-red-200 bg-red-50 text-red-700"
       : priority === "High"
-      ? "bg-amber-100 text-amber-700"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
       : priority === "Low"
-      ? "bg-emerald-100 text-emerald-700"
-      : "bg-slate-100 text-slate-700";
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : "border-slate-200 bg-slate-50 text-slate-700";
 
   const slaStatus = card.slaStatus || "Open";
   const slaDueAt = card.slaDueAt ? new Date(card.slaDueAt) : null;
@@ -115,7 +116,7 @@ export function TrelloCard({
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className="ticket-row animate-fade-in"
+      className="ticket-row group animate-fade-in"
     >
       {/* Cover Image */}
       {card.cover && (
@@ -142,20 +143,24 @@ export function TrelloCard({
         </div>
       )}
 
-      <div className="flex items-start gap-3">
-        <div className="ticket-avatar">
-          {requester.charAt(0).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="ticket-status">{status}</span>
-            <span className={`ticket-priority ${priorityColor}`}>{priority}</span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="ticket-avatar">
+            {(agencyName || requester).charAt(0).toUpperCase()}
           </div>
-          <p className="ticket-title">{card.title}</p>
-          <p className="ticket-subtitle">{requester}</p>
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="ticket-status">{status}</span>
+              <span className={`ticket-priority ${priorityColor}`}>{priority}</span>
+              {bookingRef && <span className="ticket-booking-chip">Ref {bookingRef}</span>}
+            </div>
+            <p className="ticket-title line-clamp-2">{card.title}</p>
+            <p className="ticket-subtitle mt-1">{agencyName || requester}</p>
+            {agencyName && requester && agencyName !== requester && (
+              <p className="ticket-subtitle">{requester}</p>
+            )}
           {showBookingDetails && hasBookingMeta && (
             <div className="ticket-booking-meta">
-              {bookingRef && <span className="ticket-booking-chip">Ref {bookingRef}</span>}
               {hotelName && <span className="ticket-booking-chip">{hotelName}</span>}
               {arrivalDate && (
                 <span className="ticket-booking-chip">
@@ -181,8 +186,9 @@ export function TrelloCard({
             </div>
           )}
         </div>
+        </div>
         {card.dueDate && dueStatus && (
-          <div className={`ticket-due due-${dueStatus}`}>
+          <div className={`ticket-due due-${dueStatus} shrink-0`}>
             <Clock className="w-3 h-3" />
             <span>{formatDueDate(card.dueDate)}</span>
           </div>
@@ -190,8 +196,9 @@ export function TrelloCard({
       </div>
 
       {/* Badges */}
-      {hasBadgesWithHandover && (
-        <div className="flex flex-wrap items-center gap-2 mt-3">
+      {(hasBadgesWithHandover || safeMembers.length > 0) && (
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
           {/* Due Date */}
           {card.description && (
             <div className="card-badge" title="This card has a description">
@@ -245,24 +252,25 @@ export function TrelloCard({
               Handover {isHandoverPending ? "Pending" : "Done"} - {handoverReminderCount}
             </div>
           )}
-        </div>
-      )}
+          </div>
 
-      {/* Members */}
-      {safeMembers.length > 0 && (
-        <div className="flex justify-end mt-2 -space-x-1">
-          {safeMembers.slice(0, 3).map((member) => (
-            <div
-              key={member._id}
-              className="member-avatar-sm member-avatar"
-              title={member.username}
-            >
-              {member.username.charAt(0).toUpperCase()}
-            </div>
-          ))}
-          {safeMembers.length > 3 && (
-            <div className="member-avatar-sm member-avatar">
-              +{safeMembers.length - 3}
+          {/* Members */}
+          {safeMembers.length > 0 && (
+            <div className="flex shrink-0 justify-end -space-x-1">
+              {safeMembers.slice(0, 3).map((member) => (
+                <div
+                  key={member._id}
+                  className="member-avatar-sm member-avatar"
+                  title={member.username}
+                >
+                  {member.username.charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {safeMembers.length > 3 && (
+                <div className="member-avatar-sm member-avatar">
+                  +{safeMembers.length - 3}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -276,7 +284,7 @@ export function TrelloCardOverlay({ card }: { card: Card }) {
   const hasLabels = card.labels && card.labels.length > 0;
 
   return (
-    <div className="trello-card p-2 w-64 shadow-lg rotate-3">
+    <div className="w-72 rotate-2 rounded-[22px] border border-[#D9E5F4] bg-white p-4 shadow-[0_24px_54px_rgba(15,23,42,0.16)]">
       {hasLabels && (
         <div className="flex flex-wrap gap-1 mb-2">
           {card.labels.map((label, index) => {

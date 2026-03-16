@@ -46,9 +46,11 @@ import {
   MessageSquare,
   Pencil,
   ArrowRight,
+  ChevronDown,
   Pin,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
@@ -875,6 +877,111 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
   const dueStatus = dueDate ? getDueDateStatus(dueDate, dueComplete) : null;
   const checklistProgress = checklists.length > 0 ? getChecklistProgress(checklists) : null;
+  const assignedAgentName =
+    safeMembers.find((m) => m.user._id === ticketAgent)?.user.username || "Unassigned";
+  const headerBadges: Array<{ key: string; label: string; value: string; className: string }> = [
+    {
+      key: "status",
+      label: "Status",
+      value: ticketStatus || "Not set",
+      className: "border-[#CFE0FF] bg-[#EAF2FF] text-[#1E5ED8]",
+    },
+    {
+      key: "priority",
+      label: "Priority",
+      value: ticketPriority || "Not set",
+      className: "border-[#F7D8A8] bg-[#FFF6E8] text-[#A16207]",
+    },
+    {
+      key: "source",
+      label: "Source",
+      value: ticketSource || "Not set",
+      className: "border-[#D9E5F4] bg-white text-[#486581]",
+    },
+  ];
+
+  if (dueDate) {
+    headerBadges.push({
+      key: "due",
+      label: dueComplete ? "Completed" : "Due",
+      value: formatDueDate(dueDate),
+      className:
+        dueStatus === "overdue"
+          ? "border-[#F7C6C6] bg-[#FFF1F1] text-[#B91C1C]"
+          : dueStatus === "soon"
+            ? "border-[#F8D7A8] bg-[#FFF7E8] text-[#B45309]"
+            : dueComplete
+              ? "border-[#BFE7D1] bg-[#EFFCF4] text-[#047857]"
+              : "border-[#D9E5F4] bg-white text-[#486581]",
+    });
+  }
+
+  if (checklistProgress) {
+    headerBadges.push({
+      key: "checklist",
+      label: "Checklist",
+      value: `${checklistProgress.completed}/${checklistProgress.total}`,
+      className: "border-[#D4E6F7] bg-[#F4FBFF] text-[#0F5B7A]",
+    });
+  }
+
+  if (card.pinned) {
+    headerBadges.push({
+      key: "pinned",
+      label: "Pinned",
+      value: "On board",
+      className: "border-[#DDD6FE] bg-[#F5F3FF] text-[#6D28D9]",
+    });
+  }
+
+  const bookingGroups = [
+    {
+      title: "Guest & Booking",
+      items: [
+        { label: "Requester", value: formatRequesterDisplay(requester) },
+        { label: "Booking Ref", value: bookingRef || "-" },
+        { label: "Agency", value: agencyName || "-" },
+        { label: "Hotel", value: hotelName || "-" },
+        { label: "Supplier", value: supplierName || "-" },
+      ],
+    },
+    {
+      title: "Workflow",
+      items: [
+        { label: "Type", value: ticketType || "-" },
+        { label: "Status", value: ticketStatus || "-" },
+        { label: "Priority", value: ticketPriority || "-" },
+        { label: "Group", value: ticketGroup || "-" },
+        { label: "Agent", value: assignedAgentName },
+        { label: "Source", value: ticketSource || "-" },
+        { label: "Payment", value: paymentStatus || "-" },
+      ],
+    },
+    {
+      title: "Dates & Confirmations",
+      items: [
+        { label: "Check-in", value: checkInDate || "-" },
+        { label: "Check-out", value: checkOutDate || "-" },
+        { label: "Arrival", value: arrivalDate || "-" },
+        { label: "Supplier Conf.", value: supplierConfirmationNumber || "-" },
+        { label: "Hotel Conf.", value: hotelConfirmationNumber || "-" },
+        { label: "Voucher", value: voucherNumber || "-" },
+      ],
+    },
+  ];
+  const bookingDetailItems = bookingGroups.flatMap((group) =>
+    group.items.map((item) => ({
+      ...item,
+      group: group.title,
+    }))
+  );
+
+  const sidebarButtonClass =
+    "flex w-full items-center gap-3 rounded-[18px] border border-transparent bg-[#F3F7FD] px-3.5 py-3 text-left text-sm font-medium text-[#14324B] transition hover:border-[#D8E6FB] hover:bg-white";
+  const sidebarPanelClass =
+    "rounded-[24px] border border-[#D9E5F4] bg-white/90 p-4 shadow-[0_18px_38px_rgba(15,23,42,0.06)] backdrop-blur";
+  const sidebarPopoverClass =
+    "mt-3 rounded-[20px] border border-[#D8E6F6] bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.08)]";
 
   return (
     <Dialog
@@ -883,7 +990,10 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
         if (!open) onClose();
       }}
     >
-      <DialogContent className="w-[95vw] max-w-5xl p-0 gap-0 bg-[#F8FAFC] max-h-[90vh] overflow-hidden">
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[94vh] w-[calc(100vw-1rem)] max-w-[1400px] flex-col gap-0 overflow-hidden rounded-[24px] border border-[#D9E5F4] bg-[linear-gradient(180deg,#F7FAFE_0%,#EEF4FC_100%)] p-0 shadow-[0_36px_90px_rgba(15,23,42,0.22)] sm:w-[calc(100vw-1.5rem)] sm:rounded-[32px]"
+      >
         {/* Cover */}
         {cover && (
           <div 
@@ -892,197 +1002,282 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           />
         )}
 
-        <div className="flex flex-col xl:flex-row">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="grid min-h-0 grid-cols-1">
           {/* Main Content */}
-          <div className="flex-1 p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
+          <div className="min-w-0 overflow-x-hidden bg-[linear-gradient(180deg,#FFFFFF_0%,#FBFDFF_100%)] p-4 sm:p-6 xl:p-7">
             {/* Header */}
-            <div className="flex items-start gap-3 mb-4">
-              <CreditCard className="w-5 h-5 text-[#475569] mt-1 flex-shrink-0" />
-              <div className="flex-1">
-                {isEditingTitle ? (
-                  <Input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    onBlur={handleSaveTitle}
-                    onKeyDown={(e) => e.key === "Enter" && handleSaveTitle()}
-                    className="text-xl font-semibold"
-                    autoFocus
-                  />
-                ) : (
-              <h2
-                className={`text-xl font-semibold text-[#0F172A] px-2 py-1 -mx-2 rounded ${canEditCard(userRole) ? 'cursor-pointer hover:bg-slate-100' : ''}`}
-                onClick={() => canEditCard(userRole) && setIsEditingTitle(true)}
-              >
-                {title}
-              </h2>
-            )}
-            <p className="text-sm text-[#475569] mt-1">
-              in list <span className="underline">{listTitle}</span>
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            {cardDeepLink && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(cardDeepLink);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                    toast.success("Card link copied");
-                  } catch {
-                    toast.error("Failed to copy link");
-                  }
-                }}
-              >
-                <Copy className="w-4 h-4 mr-1" />
-                {copied ? "Copied" : "Copy link"}
-              </Button>
-            )}
-            {canEditCard(userRole) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onUpdate({ pinned: !card.pinned })}
-                className="h-8 px-2"
-              >
-                <Pin className={`w-4 h-4 mr-1 ${card.pinned ? "text-indigo-600" : ""}`} />
-                {card.pinned ? "Unpin" : "Pin"}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="text-[#475569] hover:bg-slate-100"
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Members */}
-        <div className="mb-4">
-          <h3 className="text-xs font-semibold text-[#475569] mb-2">Members</h3>
-          <div className="flex items-center flex-wrap gap-2">
-            {selectedMembers.map((id) => {
-              const member = safeMembers.find((m) => m.user._id === id);
-              if (!member) return null;
-              return (
-                <button
-                  key={id}
-                  className="member-avatar member-avatar-sm border border-white/60"
-                  title={
-                    canManageCardMembers(userRole)
-                      ? `${member.user.username} (Click to remove)`
-                      : member.user.username
-                  }
-                  onClick={() => toggleMember(id)}
-                  disabled={!canManageCardMembers(userRole)}
-                >
-                  {member.user.username.charAt(0).toUpperCase()}
-                </button>
-              );
-            })}
-            {canManageCardMembers(userRole) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2"
-                onClick={() => setShowMemberPicker((p) => !p)}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add
-              </Button>
-            )}
-          </div>
-          {showMemberPicker && canManageCardMembers(userRole) && safeMembers.length > 0 && (
-            <div className="mt-2 border border-slate-200 rounded-lg shadow-lg bg-white max-h-48 overflow-y-auto">
-              {safeMembers.map((m) => {
-                const checked = selectedMembers.includes(m.user._id);
-                return (
-                  <label
-                    key={m.user._id}
-                    className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleMember(m.user._id)}
-                    />
-                    <div className="member-avatar-sm member-avatar">{m.user.username.charAt(0).toUpperCase()}</div>
-                    <div>
-                      <div className="text-sm font-semibold text-[#0F172A]">{m.user.username}</div>
-                      <div className="text-xs text-[#64748B]">{m.user.email}</div>
+            <div className="mb-5 rounded-[24px] border border-[#DCE6F5] bg-[linear-gradient(135deg,#FFFFFF_0%,#F5F9FF_100%)] p-4 shadow-[0_24px_55px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:p-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#2063E9_0%,#17B897_100%)] text-white shadow-[0_18px_30px_rgba(32,99,233,0.22)]">
+                      <CreditCard className="h-5 w-5" />
                     </div>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[#D9E5F4] bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#486581]">
+                          {listTitle}
+                        </span>
+                        <span className="rounded-full bg-[#ECFDF5] px-3 py-1 text-[11px] font-semibold text-[#047857]">
+                          {selectedMembers.length} member{selectedMembers.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      {isEditingTitle ? (
+                        <Input
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          onBlur={handleSaveTitle}
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveTitle()}
+                          className="h-12 rounded-2xl border-[#D9E5F4] bg-white text-lg font-semibold sm:text-xl"
+                          autoFocus
+                        />
+                      ) : (
+                        <h2
+                          className={cn(
+                            "-mx-2 rounded-2xl px-3 py-2 text-xl font-semibold tracking-tight text-[#0F172A] sm:text-2xl",
+                            canEditCard(userRole) && "cursor-pointer hover:bg-white/80"
+                          )}
+                          onClick={() => canEditCard(userRole) && setIsEditingTitle(true)}
+                        >
+                          {title}
+                        </h2>
+                      )}
+                      <p className="mt-1 text-sm text-[#5A7184]">
+                        In list <span className="font-semibold text-[#14324B]">{listTitle}</span>
+                      </p>
+                    </div>
+                  </div>
 
-        {/* Ticket Properties */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-[#475569]">Booking Details</h3>
-            <div className="flex items-center gap-2">
-              {!hasBookingDetails && !isEditingTicketFields && (
-                <Button size="sm" variant="outline" onClick={() => setIsEditingTicketFields(true)}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add
-                </Button>
-              )}
-              {hasBookingDetails && !isEditingTicketFields && (
-                <>
-                  <Button size="sm" variant="outline" onClick={() => setIsEditingTicketFields(true)}>
-                    Edit
-                  </Button>
-                  {userRole === "admin" && (
-                    <Button size="sm" variant="ghost" className="text-red-600" onClick={handleDeleteTicketDetails}>
-                      Delete
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {headerBadges.map((badge) => (
+                      <div
+                        key={badge.key}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm",
+                          badge.className
+                        )}
+                      >
+                        <span className="mr-1.5 opacity-70">{badge.label}</span>
+                        <span>{badge.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 xl:max-w-[320px] xl:justify-end">
+                  {cardDeepLink && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-4 text-[#486581] hover:bg-[#F6FAFF]"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(cardDeepLink);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1500);
+                          toast.success("Card link copied");
+                        } catch {
+                          toast.error("Failed to copy link");
+                        }
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4 shrink-0" />
+                      {copied ? "Copied" : "Copy link"}
                     </Button>
                   )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {!isEditingTicketFields && hasBookingDetails && (
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 text-sm leading-relaxed">
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Requester:</span> {formatRequesterDisplay(requester)}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Booking Ref:</span> {bookingRef || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Agency:</span> {agencyName || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Hotel:</span> {hotelName || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Supplier:</span> {supplierName || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Source:</span> {ticketSource || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Type:</span> {ticketType || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Status:</span> {ticketStatus || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Priority:</span> {ticketPriority || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Group:</span> {ticketGroup || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Payment:</span> {paymentStatus || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Agent:</span> {safeMembers.find((m) => m.user._id === ticketAgent)?.user.username || "Unassigned"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Check-in:</span> {checkInDate || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Check-out:</span> {checkOutDate || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Arrival:</span> {arrivalDate || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Supplier Conf:</span> {supplierConfirmationNumber || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Hotel Conf:</span> {hotelConfirmationNumber || "-"}</div>
-                <div className="space-y-0.5"><span className="font-semibold text-slate-500">Voucher:</span> {voucherNumber || "-"}</div>
+                  {canEditCard(userRole) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onUpdate({ pinned: !card.pinned })}
+                      className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-4 text-[#486581] hover:bg-[#F6FAFF]"
+                    >
+                      <Pin className={cn("mr-2 h-4 w-4 shrink-0", card.pinned && "text-indigo-600")} />
+                      {card.pinned ? "Unpin" : "Pin"}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClose}
+                    className="h-10 w-10 rounded-2xl border border-[#D9E5F4] bg-white p-0 text-[#486581] hover:bg-[#F6FAFF]"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
               </div>
             </div>
-          )}
 
-          {!hasBookingDetails && !isEditingTicketFields && (
-            <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500 bg-white">
-              No booking details yet.
+            {/* Members */}
+            <div className="mb-5 rounded-[26px] border border-[#DCE6F5] bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Members</h3>
+                  <p className="mt-1 text-sm text-[#5A7184]">Keep ownership clear for this request.</p>
+                </div>
+                {canManageCardMembers(userRole) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-4 text-[#486581] hover:bg-[#F6FAFF]"
+                    onClick={() => setShowMemberPicker((p) => !p)}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add member
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                {selectedMembers.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-[#D4E0F1] bg-[#F8FBFF] px-4 py-3 text-sm text-[#6B7C93]">
+                    No members assigned yet.
+                  </div>
+                )}
+                {selectedMembers.map((id) => {
+                  const member = safeMembers.find((m) => m.user._id === id);
+                  if (!member) return null;
+                  return (
+                    <button
+                      key={id}
+                    className="flex w-full items-center gap-3 rounded-[20px] border border-[#DCE6F5] bg-[#F8FBFF] px-3 py-2 text-left shadow-sm transition hover:border-[#BDD4F7] hover:bg-white sm:w-auto"
+                      title={
+                        canManageCardMembers(userRole)
+                          ? `${member.user.username} (Click to remove)`
+                          : member.user.username
+                      }
+                      onClick={() => toggleMember(id)}
+                      disabled={!canManageCardMembers(userRole)}
+                    >
+                      <span className="member-avatar border border-white/60">
+                        {member.user.username.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-[#14324B]">
+                          {member.user.username}
+                        </span>
+                        <span className="block truncate text-xs text-[#6B7C93]">
+                          {member.user.email}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {showMemberPicker && canManageCardMembers(userRole) && safeMembers.length > 0 && (
+                <div className="mt-4 max-h-56 overflow-y-auto rounded-[20px] border border-[#D9E5F4] bg-[#FBFDFF] shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                  {safeMembers.map((m) => {
+                    const checked = selectedMembers.includes(m.user._id);
+                    return (
+                      <label
+                        key={m.user._id}
+                        className="flex cursor-pointer items-center gap-3 border-b border-[#EEF3FA] px-4 py-3 last:border-b-0 hover:bg-white"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleMember(m.user._id)}
+                        />
+                        <div className="member-avatar">{m.user.username.charAt(0).toUpperCase()}</div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-[#0F172A]">
+                            {m.user.username}
+                          </div>
+                          <div className="truncate text-xs text-[#64748B]">{m.user.email}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Ticket Properties */}
+            <div className="mb-6 rounded-[26px] border border-[#DCE6F5] bg-[linear-gradient(180deg,#FFFFFF_0%,#F7FAFE_100%)] p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Booking Details</h3>
+                  <p className="mt-1 text-sm text-[#5A7184]">
+                    Customer context, workflow state, and operational references.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!hasBookingDetails && !isEditingTicketFields && (
+                    <Button size="sm" variant="outline" className="rounded-2xl" onClick={() => setIsEditingTicketFields(true)}>
+                      <Plus className="mr-1 h-4 w-4" />
+                      Add
+                    </Button>
+                  )}
+                  {hasBookingDetails && !isEditingTicketFields && (
+                    <>
+                      <Button size="sm" variant="outline" className="rounded-2xl" onClick={() => setIsEditingTicketFields(true)}>
+                        Edit
+                      </Button>
+                      {userRole === "admin" && (
+                        <Button size="sm" variant="ghost" className="rounded-2xl text-red-600 hover:bg-red-50" onClick={handleDeleteTicketDetails}>
+                          Delete
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {!isEditingTicketFields && hasBookingDetails && (
+                <>
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-[#CFE0FF] bg-[#EAF2FF] px-3 py-1 text-xs font-semibold text-[#1E5ED8]">
+                      {ticketStatus || "Not set"}
+                    </span>
+                    <span className="rounded-full border border-[#F7D8A8] bg-[#FFF6E8] px-3 py-1 text-xs font-semibold text-[#A16207]">
+                      {ticketPriority || "Not set"}
+                    </span>
+                    <span className="rounded-full border border-[#D9E5F4] bg-white px-3 py-1 text-xs font-semibold text-[#486581]">
+                      {ticketType || "Not set"}
+                    </span>
+                    <span className="rounded-full border border-[#D9E5F4] bg-white px-3 py-1 text-xs font-semibold text-[#486581]">
+                      Agent: {assignedAgentName}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                    {bookingDetailItems.map((item) => (
+                      <div
+                        key={`${item.group}-${item.label}`}
+                        className="rounded-[18px] border border-[#E3ECF8] bg-white/95 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7B8AA0]">
+                            {item.label}
+                          </div>
+                          <div className="rounded-full bg-[#F4F8FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7B8AA0]">
+                            {item.group}
+                          </div>
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-2 break-words text-sm font-semibold leading-6 text-[#14324B]",
+                            item.value === "-" && "font-medium text-[#7B8AA0]"
+                          )}
+                        >
+                          {item.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!hasBookingDetails && !isEditingTicketFields && (
+                <div className="rounded-[22px] border border-dashed border-[#C7D8EE] bg-[#FBFDFF] p-5 text-sm text-[#6B7C93]">
+                  No booking details yet.
+                </div>
+              )}
 
           {isEditingTicketFields && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4 md:grid-cols-2">
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Requester</label>
                 <Input
@@ -1115,7 +1310,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Source</label>
-                <select value={ticketSource} onChange={(e) => setTicketSource(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={ticketSource} onChange={(e) => setTicketSource(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   {["Agency", "Supplier", "Hotel", "Email", "WhatsApp", "Portal", "Chat", "Phone", "API"].map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1123,7 +1318,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Type</label>
-                <select value={ticketType} onChange={(e) => setTicketType(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={ticketType} onChange={(e) => setTicketType(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   {["Booking request", "Rate request", "Reconfirmation", "Amendment", "Cancellation", "Service request"].map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1131,7 +1326,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Status</label>
-                <select value={ticketStatus} onChange={(e) => setTicketStatus(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={ticketStatus} onChange={(e) => setTicketStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   {TRAVEL_TICKET_STATUSES.map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1139,7 +1334,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Priority</label>
-                <select value={ticketPriority} onChange={(e) => setTicketPriority(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={ticketPriority} onChange={(e) => setTicketPriority(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   {["Urgent", "High", "Medium", "Low"].map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1151,7 +1346,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Payment status</label>
-                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   {TRAVEL_PAYMENT_STATUSES.map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1183,7 +1378,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div className="md:col-span-2">
                 <label className="text-xs font-semibold text-[#64748B]">Agent</label>
-                <select value={ticketAgent} onChange={(e) => setTicketAgent(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={ticketAgent} onChange={(e) => setTicketAgent(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   <option value="">Unassigned</option>
                   {safeMembers.map((m) =>
                     m.user ? (
@@ -1209,7 +1404,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                   size="sm"
                   onClick={handleSaveTicketFields}
                   disabled={!isTicketDirty || isSavingTicketFields}
-                  className="bg-[#6366F1] hover:bg-[#4F46E5] text-white"
+                  className="rounded-2xl bg-[#2063E9] px-4 text-white hover:bg-[#164FC0]"
                 >
                   {isSavingTicketFields ? "Saving..." : "Save"}
                 </Button>
@@ -1232,7 +1427,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           </div>
 
           {!isEditingHandover && hasHandoverDetails && (
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div><span className="font-semibold text-slate-500">Status:</span> {handoverStatus}</div>
                 <div>
@@ -1257,16 +1452,16 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           )}
 
           {!hasHandoverDetails && !isEditingHandover && (
-            <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500 bg-white">
+            <div className="rounded-[22px] border border-dashed border-[#C7D8EE] bg-white p-4 text-sm text-[#6B7C93]">
               No handover details yet.
             </div>
           )}
 
           {isEditingHandover && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="grid grid-cols-1 gap-3 rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4 md:grid-cols-2">
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Handover status</label>
-                <select value={handoverStatus} onChange={(e) => setHandoverStatus(e.target.value as any)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={handoverStatus} onChange={(e) => setHandoverStatus(e.target.value as any)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   {["Not set", "Resolved in shift", "Pending for next shift"].map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1274,7 +1469,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Next owner</label>
-                <select value={handoverNextOwner} onChange={(e) => setHandoverNextOwner(e.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={handoverNextOwner} onChange={(e) => setHandoverNextOwner(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   <option value="">Unassigned</option>
                   {safeMembers.map((m) =>
                     m.user ? (
@@ -1287,7 +1482,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Pending</label>
-                <select value={handoverPendingState} onChange={(e) => setHandoverPendingState(e.target.value as "Yes" | "No")} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+                <select value={handoverPendingState} onChange={(e) => setHandoverPendingState(e.target.value as "Yes" | "No")} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
                   <option value="No">No</option>
                   <option value="Yes">Yes</option>
                 </select>
@@ -1327,7 +1522,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                   size="sm"
                   onClick={handleSaveHandover}
                   disabled={!isHandoverDirty || isSavingHandover}
-                  className="bg-[#6366F1] hover:bg-[#4F46E5] text-white"
+                  className="rounded-2xl bg-[#2063E9] px-4 text-white hover:bg-[#164FC0]"
                 >
                   {isSavingHandover ? "Saving..." : "Save Handover"}
                 </Button>
@@ -2052,14 +2247,16 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           </div>
 
           {/* Sidebar */}
-          <div className="w-full xl:w-48 p-4 bg-[#F1F5F9] border-t xl:border-t-0 xl:border-l border-[#E2E8F0]">
+          <div className="border-t border-[#E3ECF8] bg-[linear-gradient(180deg,#F7FAFE_0%,#EFF5FC_100%)] p-4 sm:p-5">
+            <div className="grid gap-4 md:grid-cols-2">
             {canEditCard(userRole) && (
-              <>
-                <h4 className="text-xs font-semibold text-[#475569] mb-2">Add to card</h4>
-                <div className="space-y-1">
+              <div className={cn(sidebarPanelClass, "h-full")}>
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Add to card</h4>
+                <p className="mb-3 text-sm text-[#5A7184]">Quick actions for structure and context.</p>
+                <div className="space-y-2">
                   <button
                     onClick={() => setShowLabelPicker(!showLabelPicker)}
-                    className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2"
+                    className={sidebarButtonClass}
                   >
                     <Tag className="w-4 h-4" />
                     Labels
@@ -2067,7 +2264,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
                   <button
                     onClick={() => setShowChecklistAdd(!showChecklistAdd)}
-                    className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2"
+                    className={sidebarButtonClass}
                   >
                     <CheckSquare className="w-4 h-4" />
                     Checklist
@@ -2075,13 +2272,13 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
                   <button
                     onClick={() => setShowDatePicker(!showDatePicker)}
-                    className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2"
+                    className={sidebarButtonClass}
                   >
                     <Clock className="w-4 h-4" />
                     Dates
                   </button>
 
-                  <button className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2">
+                  <button className={sidebarButtonClass}>
                     <Image className="w-4 h-4" />
                     Cover
                   </button>
@@ -2089,7 +2286,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
-                    className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2"
+                    className={sidebarButtonClass}
                   >
                     {isUploading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -2099,18 +2296,20 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                     Attachment
                   </button>
                 </div>
-              </>
+              </div>
             )}
 
-            <h4 className={`text-xs font-semibold text-[#475569] mb-2 ${canEditCard(userRole) ? 'mt-4' : ''}`}>Actions</h4>
-            <div className="space-y-1">
+            <div className={cn(sidebarPanelClass, "h-full")}>
+            <h4 className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Actions</h4>
+            <p className="mb-3 text-sm text-[#5A7184]">Board-level card controls.</p>
+            <div className="space-y-2">
               {/* Move Button */}
               {onMove && canEditCard(userRole) && (
                 <button
                   onClick={() => setShowMovePicker(!showMovePicker)}
-                  className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2"
+                  className={sidebarButtonClass}
                 >
-                  <ArrowRight className="w-4 h-4" />
+                  <ChevronDown className="w-4 h-4" />
                   Move
                 </button>
               )}
@@ -2118,7 +2317,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               {canEditCard(userRole) && (
                 <button
                   onClick={handleArchiveCard}
-                  className="w-full trello-btn trello-btn-secondary text-left flex items-center gap-2"
+                  className={sidebarButtonClass}
                 >
                   <Archive className="w-4 h-4" />
                   Archive
@@ -2127,7 +2326,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               {canDeleteCard(userRole, card, currentUser?._id) && (
                 <button
                   onClick={onDelete}
-                  className="w-full trello-btn text-left flex items-center gap-2 bg-[#EF4444] text-white hover:bg-[#DC2626]"
+                  className="flex w-full items-center gap-3 rounded-[18px] bg-[#EF4444] px-3.5 py-3 text-left text-sm font-medium text-white transition hover:bg-[#DC2626]"
                 >
                   <Trash2 className="w-4 h-4" />
                   Delete
@@ -2143,11 +2342,12 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 </p>
               )}
             </div>
+            </div>
 
             {/* Label Picker Popup */}
             {showLabelPicker && (
-              <div className="mt-2 p-2 bg-white rounded shadow-lg border">
-                <h5 className="text-xs font-semibold text-[#475569] mb-2">Labels</h5>
+              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+                <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Labels</h5>
                 <div className="space-y-1">
                   {LABEL_COLORS.map((labelColor) => (
                     <button
@@ -2167,8 +2367,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Date Picker Popup */}
             {showDatePicker && (
-              <div className="mt-2 p-2 bg-white rounded shadow-lg border">
-                <h5 className="text-xs font-semibold text-[#475569] mb-2">Due date</h5>
+              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+                <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Due date</h5>
                 <Input
                   type="date"
                   value={dueDate}
@@ -2195,8 +2395,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Add Checklist Popup */}
             {showChecklistAdd && (
-              <div className="mt-2 p-2 bg-white rounded shadow-lg border">
-                <h5 className="text-xs font-semibold text-[#475569] mb-2">Add checklist</h5>
+              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+                <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Add checklist</h5>
                 <Input
                   placeholder="Checklist title..."
                   value={newChecklistTitle}
@@ -2211,8 +2411,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Move Card Picker */}
             {showMovePicker && onMove && (
-              <div className="mt-2 p-3 bg-white rounded shadow-lg border">
-                <h5 className="text-xs font-semibold text-[#475569] mb-2">Move to list</h5>
+              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+                <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Move to list</h5>
                 <div className="space-y-1">
                   {lists.filter((l) => l._id !== currentListId).map((list) => (
                     <button
@@ -2231,7 +2431,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                       }}
                       className="w-full text-left px-3 py-2 text-sm rounded hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center gap-2"
                     >
-                      <ArrowRight className="w-3 h-3" />
+                      <ChevronDown className="w-3 h-3" />
                       {list.title}
                     </button>
                   ))}
@@ -2247,7 +2447,9 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 )}
               </div>
             )}
+            </div>
           </div>
+        </div>
         </div>
       </DialogContent>
     </Dialog>

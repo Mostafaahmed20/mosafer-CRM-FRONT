@@ -1114,15 +1114,39 @@ export default function BoardView() {
     return { ...list, cards };
   });
 
+  const totalCards = lists.reduce((sum, list) => sum + list.cards.length, 0);
+  const activeRequestCount = lists.reduce(
+    (sum, list) =>
+      sum +
+      list.cards.filter((card) => !["Completed", "Closed", "Cancelled"].includes(card.status || "")).length,
+    0
+  );
+  const handoverPendingCount = lists.reduce(
+    (sum, list) => sum + list.cards.filter((card) => card.handoverPendingState === "Yes").length,
+    0
+  );
+  const membersCount = board?.members?.length || 0;
+  const boardAccent = getBackgroundColor();
+  const boardDescription =
+    board?.description?.trim() || "Track ticket intake, booking follow-up, and shift handovers in one workspace.";
+  const toolbarButtonClass =
+    "h-10 rounded-2xl border border-[#D9E5F4] bg-white px-3 text-[#486581] shadow-sm hover:bg-[#F6FAFF] hover:text-[#102A43]";
+  const iconToolbarButtonClass =
+    "h-10 w-10 rounded-2xl border border-[#D9E5F4] bg-white p-0 text-[#486581] shadow-sm hover:bg-[#F6FAFF] hover:text-[#102A43]";
+  const sidebarCardClass =
+    "rounded-[24px] border border-[#D9E5F4] bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]";
+  const summaryCardClass =
+    "rounded-[24px] border border-[#D9E5F4] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.05)]";
+
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-[#F5F7FB] flex">
+      <div className="flex min-h-screen bg-[#F4F7FB]">
         <SidebarRail />
-        <div
-          className="flex-1 flex items-center justify-center"
-          style={{ backgroundColor: getBackgroundColor() }}
-        >
-          <Loader2 className="w-8 h-8 animate-spin text-white" />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex items-center gap-3 rounded-full border border-[#D9E5F4] bg-white px-5 py-3 text-sm font-medium text-[#486581] shadow-sm">
+            <Loader2 className="h-5 w-5 animate-spin text-[#2063E9]" />
+            Loading board workspace...
+          </div>
         </div>
       </div>
     );
@@ -1130,358 +1154,423 @@ export default function BoardView() {
 
   if (!board) {
     return (
-      <div className="min-h-screen bg-[#F5F7FB] flex">
+      <div className="flex min-h-screen bg-[#F4F7FB]">
         <SidebarRail />
-        <div className="flex-1 flex items-center justify-center bg-[#6366F1]">
-          <div className="text-white text-lg">Board not found</div>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="rounded-[28px] border border-[#D9E5F4] bg-white px-8 py-10 text-center shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+            <div className="text-lg font-semibold text-[#102A43]">Board not found</div>
+            <div className="mt-2 text-sm text-[#6B7C93]">The workspace could not be loaded.</div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F7FB] flex">
+    <div className="flex min-h-screen bg-[#F4F7FB]">
       <SidebarRail />
-      <div className="flex-1 flex flex-col" style={{ backgroundColor: getBackgroundColor() }}>
-        {/* Board Header */}
-        <div className="board-header">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setLocation("/dashboard")}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Boards
-          </Button>
-          
-          <div className="h-6 w-px bg-white/30" />
-          
-          <h1 className="board-title">{board.title}</h1>
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <Star className="w-4 h-4" />
-          </Button>
-        </div>
-
-      <div className="flex items-center gap-2">
-        {/* Search */}
-        {showSearch ? (
-          <div className="flex items-center gap-2 animate-fade-in">
-            <Input
-                placeholder="Search cards..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 w-48 bg-white/20 border-none text-white placeholder:text-white/60"
-                autoFocus
-              />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="border-b border-[#D9E5F4] bg-white/90 backdrop-blur">
+          <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-5">
+            <div className="flex min-w-0 items-start gap-4">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setShowSearch(false);
-                  setSearchQuery("");
-                }}
-                className="text-white/90 hover:bg-white/20 h-8 w-8 p-0"
+                onClick={() => setLocation("/dashboard")}
+                className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-3 text-[#486581] hover:bg-[#F6FAFF] hover:text-[#102A43]"
               >
-                <X className="w-4 h-4" />
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                Boards
               </Button>
-            </div>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSearch(true)}
-              className="text-white/80 hover:text-white hover:bg-white/10"
-            >
-              <Search className="w-4 h-4 mr-1" />
-              Search
-            </Button>
-          )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-white/80 hover:text-white hover:bg-white/10"
-              >
-                <Filter className="w-4 h-4 mr-1" />
-                {dueSoonOnly ? "Due soon" : "Filter"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => setDueSoonOnly((prev) => !prev)}>
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-300">
-                    {dueSoonOnly ? <Check className="h-3 w-3" /> : null}
-                  </span>
-                  Due soon (7 days)
-                </div>
-              </DropdownMenuItem>
-              {dueSoonOnly && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setDueSoonOnly(false)}>
-                    Clear filters
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowBookingDetails((prev) => !prev)}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            {showBookingDetails ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-            Booking details
-          </Button>
-
-          <div className="h-6 w-px bg-white/30" />
-
-          {/* Members */}
-          <div className="flex -space-x-1">
-            {board.members?.slice(0, 4).map((m) => (
-              m.user && (
-                <div
-                  key={m.user._id}
-                  className="member-avatar border-2 border-white/30 relative"
-                  title={`${m.user.username} (${getRoleLabel(m.role)})`}
-                >
-                  {m.user.username.charAt(0).toUpperCase()}
-                  <span
-                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white"
-                    style={{ backgroundColor: getRoleBadgeColor(m.role) }}
-                  />
-                </div>
-              )
-            ))}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowShareDialog(true)}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <Users className="w-4 h-4 mr-1" />
-            Share
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowActivity((prev) => !prev)}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <Clock className="w-4 h-4 mr-1" />
-            Activity
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowChat((prev) => !prev)}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <MessageSquare className="w-4 h-4 mr-1" />
-            Chat
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowArchivedDialog(true)}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <Archive className="w-4 h-4 mr-1" />
-            Archived
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-white/80 hover:text-white hover:bg-white/10"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem
-                onClick={() => {
-                  if (board) {
-                    setSettingsTitle(board.title || "");
-                    setSettingsDescription(board.description || "");
-                    setSettingsBackground(board.background || "blue");
-                  }
-                  setShowSettingsDialog(true);
-                }}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Board Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowBookingDetails((prev) => !prev)}>
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-300">
-                    {showBookingDetails ? <Check className="h-3 w-3" /> : null}
-                  </span>
-                  Booking details on cards
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {userRole === "admin" && (
-                <DropdownMenuItem
-                  onClick={() => setShowDeleteDialog(true)}
-                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Board
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col overflow-hidden">
-
-      {/* Calendar strip */}
-      {showCalendarStrip && upcomingCards.length > 0 && (
-        <div className="px-4 pt-2">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold text-white/80">Due in next 7 days</div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-white/70 hover:text-white hover:bg-white/10 h-8 px-2"
-              onClick={() => {
-                setShowCalendarStrip(false);
-                setDismissedCalendar(true);
-              }}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {upcomingCards.map(({ card, listId, listTitle }) => {
-              const dueDate = card.dueDate ? new Date(card.dueDate) : null;
-              const label = dueDate
-                ? dueDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
-                : "";
-              const dueStatus = card.dueDate ? getDueDateStatus(card.dueDate, card.dueComplete) : "default";
-              return (
-                <div
-                  key={card._id}
-                  onClick={() => handleCardClick(card, listId)}
-                  className="min-w-[200px] rounded-lg bg-white/15 backdrop-blur border border-white/20 px-3 py-2 text-left hover:bg-white/25 transition cursor-pointer"
-                >
-                  <div className="text-[11px] text-white/80 mb-1">{label}</div>
-                  <div className="text-sm font-semibold text-white line-clamp-1">{card.title}</div>
-                  <div className="text-[11px] text-white/70 line-clamp-1">List: {listTitle}</div>
-                  <div className="flex items-center justify-between gap-2 mt-2">
-                    <div className={`text-[11px] ${dueStatus === "overdue" ? "text-red-200" : dueStatus === "soon" ? "text-amber-200" : "text-emerald-200"}`}>
-                      {formatDueDate(card.dueDate!)}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSnoozeDueDate(listId, card);
-                        }}
-                        className="h-6 px-2 text-white/80 hover:text-white hover:bg-white/20"
-                      >
-                        <Clock className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMarkDueDone(listId, card._id);
-                        }}
-                        className="h-6 px-2 text-white/80 hover:text-white hover:bg-white/20"
-                      >
-                        <Check className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Pinned cards strip */}
-      {pinnedCards.length > 0 && (
-        <div className="px-4 pt-2">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold text-white/80 flex items-center gap-2">
-              <Pin className="w-3.5 h-3.5" />
-              Pinned cards
-            </div>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {pinnedCards.map(({ card, listId, listTitle }) => (
               <div
-                key={card._id}
-                onClick={() => handleCardClick(card, listId)}
-                className="min-w-[200px] rounded-lg bg-white/15 backdrop-blur border border-white/20 px-3 py-2 text-left hover:bg-white/25 transition cursor-pointer"
-              >
-                <div className="text-[11px] text-white/70 mb-1">List: {listTitle}</div>
-                <div className="text-sm font-semibold text-white line-clamp-1">{card.title}</div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="text-[11px] text-white/60 line-clamp-1">
-                    {card.dueDate ? formatDueDate(card.dueDate) : "No due date"}
-                  </div>
+                className="hidden h-12 w-1 rounded-full md:block"
+                style={{ backgroundColor: boardAccent }}
+              />
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-[26px] font-semibold tracking-tight text-[#102A43]">
+                    {board.title}
+                  </h1>
+                  <Button variant="ghost" size="sm" className={iconToolbarButtonClass}>
+                    <Star className="h-4 w-4" />
+                  </Button>
+                  {userRole && (
+                    <span className="rounded-full bg-[#EAF2FF] px-3 py-1 text-xs font-semibold text-[#1E5ED8]">
+                      {getRoleLabel(userRole)}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 max-w-3xl text-sm text-[#6B7C93]">{boardDescription}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {showSearch ? (
+                <div className="flex items-center gap-2 animate-fade-in">
+                  <Input
+                    placeholder="Search cards..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-10 w-56 rounded-2xl border-[#D9E5F4] bg-white px-4 text-[#102A43] shadow-none placeholder:text-[#829AB1]"
+                    autoFocus
+                  />
                   <Button
-                    type="button"
-                    size="sm"
                     variant="ghost"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTogglePin(listId, card, false);
+                    size="sm"
+                    onClick={() => {
+                      setShowSearch(false);
+                      setSearchQuery("");
                     }}
-                    className="h-6 px-2 text-white/80 hover:text-white hover:bg-white/20"
+                    className={iconToolbarButtonClass}
                   >
-                    <Pin className="w-3 h-3" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSearch(true)}
+                  className={toolbarButtonClass}
+                >
+                  <Search className="mr-1 h-4 w-4" />
+                  Search
+                </Button>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className={toolbarButtonClass}>
+                    <Filter className="mr-1 h-4 w-4" />
+                    {dueSoonOnly ? "Due soon" : "Filter"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 rounded-2xl border-[#D9E5F4]">
+                  <DropdownMenuItem onClick={() => setDueSoonOnly((prev) => !prev)}>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-300">
+                        {dueSoonOnly ? <Check className="h-3 w-3" /> : null}
+                      </span>
+                      Due soon (7 days)
+                    </div>
+                  </DropdownMenuItem>
+                  {dueSoonOnly && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setDueSoonOnly(false)}>
+                        Clear filters
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowBookingDetails((prev) => !prev)}
+                className={toolbarButtonClass}
+              >
+                {showBookingDetails ? <Eye className="mr-1 h-4 w-4" /> : <EyeOff className="mr-1 h-4 w-4" />}
+                Booking details
+              </Button>
+
+              <div className="hidden -space-x-1 md:flex">
+                {board.members?.slice(0, 4).map((m) =>
+                  m.user ? (
+                    <div
+                      key={m.user._id}
+                      className="member-avatar relative border-2 border-white"
+                      title={`${m.user.username} (${getRoleLabel(m.role)})`}
+                    >
+                      {m.user.username.charAt(0).toUpperCase()}
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white"
+                        style={{ backgroundColor: getRoleBadgeColor(m.role) }}
+                      />
+                    </div>
+                  ) : null
+                )}
               </div>
-            ))}
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowShareDialog(true)}
+                className={toolbarButtonClass}
+              >
+                <Users className="mr-1 h-4 w-4" />
+                Share
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowActivity((prev) => !prev)}
+                className={toolbarButtonClass}
+              >
+                <Clock className="mr-1 h-4 w-4" />
+                Activity
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowChat((prev) => !prev)}
+                className={toolbarButtonClass}
+              >
+                <MessageSquare className="mr-1 h-4 w-4" />
+                Chat
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowArchivedDialog(true)}
+                className={toolbarButtonClass}
+              >
+                <Archive className="mr-1 h-4 w-4" />
+                Archived
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className={iconToolbarButtonClass}>
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 rounded-2xl border-[#D9E5F4]">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (board) {
+                        setSettingsTitle(board.title || "");
+                        setSettingsDescription(board.description || "");
+                        setSettingsBackground(board.background || "blue");
+                      }
+                      setShowSettingsDialog(true);
+                    }}
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Board Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowBookingDetails((prev) => !prev)}>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-300">
+                        {showBookingDetails ? <Check className="h-3 w-3" /> : null}
+                      </span>
+                      Booking details on cards
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {userRole === "admin" && (
+                    <DropdownMenuItem
+                      onClick={() => setShowDeleteDialog(true)}
+                      className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Board
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
-      )}
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="px-6 pt-5">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className={summaryCardClass}>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                  Total Requests
+                </div>
+                <div className="mt-3 text-3xl font-semibold text-[#102A43]">{totalCards}</div>
+                <div className="mt-1 text-sm text-[#6B7C93]">{activeRequestCount} active in the queue</div>
+              </div>
+              <div className={summaryCardClass}>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                  Due Soon
+                </div>
+                <div className="mt-3 text-3xl font-semibold text-[#102A43]">{upcomingCards.length}</div>
+                <div className="mt-1 text-sm text-[#6B7C93]">Requests due in the next 7 days</div>
+              </div>
+              <div className={summaryCardClass}>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                  Handover Watch
+                </div>
+                <div className="mt-3 text-3xl font-semibold text-[#102A43]">{handoverPendingCount}</div>
+                <div className="mt-1 text-sm text-[#6B7C93]">Tickets waiting for the next shift</div>
+              </div>
+              <div
+                className={summaryCardClass}
+                style={{ background: `linear-gradient(135deg, ${boardAccent}16 0%, #ffffff 65%)` }}
+              >
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                  Workspace Owner
+                </div>
+                <div className="mt-3 text-xl font-semibold text-[#102A43]">
+                  {board.owner?.username || "Owner"}
+                </div>
+                <div className="mt-1 text-sm text-[#6B7C93]">{membersCount} members collaborating</div>
+              </div>
+            </div>
+          </div>
 
-      {!showCalendarStrip && upcomingCards.length > 0 && dismissedCalendar && (
-        <div className="px-4 pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-white/80 hover:text-white hover:bg-white/10 h-8"
-            onClick={() => setShowCalendarStrip(true)}
-          >
-            Show due soon
-          </Button>
-        </div>
-      )}
+          {showCalendarStrip && upcomingCards.length > 0 && (
+            <div className="px-6 pt-5">
+              <div className="rounded-[26px] border border-[#D9E5F4] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-[#102A43]">Due in the next 7 days</div>
+                    <div className="text-xs text-[#829AB1]">
+                      Review upcoming requests and take action before they age out.
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={iconToolbarButtonClass}
+                    onClick={() => {
+                      setShowCalendarStrip(false);
+                      setDismissedCalendar(true);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {upcomingCards.map(({ card, listId, listTitle }) => {
+                    const dueDate = card.dueDate ? new Date(card.dueDate) : null;
+                    const label = dueDate
+                      ? dueDate.toLocaleDateString("en-US", {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                        })
+                      : "";
+                    const dueStatus = card.dueDate
+                      ? getDueDateStatus(card.dueDate, card.dueComplete)
+                      : "default";
+                    return (
+                      <div
+                        key={card._id}
+                        onClick={() => handleCardClick(card, listId)}
+                        className="min-w-[240px] cursor-pointer rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4 text-left transition hover:border-[#BCD3F8] hover:shadow-[0_18px_36px_rgba(15,23,42,0.08)]"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                          {label}
+                        </div>
+                        <div className="mt-2 line-clamp-1 text-sm font-semibold text-[#102A43]">
+                          {card.title}
+                        </div>
+                        <div className="mt-1 line-clamp-1 text-xs text-[#6B7C93]">List: {listTitle}</div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <div
+                            className={`text-[11px] font-semibold ${
+                              dueStatus === "overdue"
+                                ? "text-red-600"
+                                : dueStatus === "soon"
+                                  ? "text-amber-600"
+                                  : "text-emerald-600"
+                            }`}
+                          >
+                            {formatDueDate(card.dueDate!)}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSnoozeDueDate(listId, card);
+                              }}
+                              className={iconToolbarButtonClass}
+                            >
+                              <Clock className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkDueDone(listId, card._id);
+                              }}
+                              className={iconToolbarButtonClass}
+                            >
+                              <Check className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
-      {/* Board Content */}
-      <div className="flex-1 overflow-x-auto p-4">
+          {pinnedCards.length > 0 && (
+            <div className="px-6 pt-5">
+              <div className="rounded-[26px] border border-[#D9E5F4] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#102A43]">
+                  <Pin className="h-4 w-4 text-[#2063E9]" />
+                  Pinned requests
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {pinnedCards.map(({ card, listId, listTitle }) => (
+                    <div
+                      key={card._id}
+                      onClick={() => handleCardClick(card, listId)}
+                      className="min-w-[240px] cursor-pointer rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4 text-left transition hover:border-[#BCD3F8] hover:shadow-[0_18px_36px_rgba(15,23,42,0.08)]"
+                    >
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                        List: {listTitle}
+                      </div>
+                      <div className="mt-2 line-clamp-1 text-sm font-semibold text-[#102A43]">
+                        {card.title}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="text-[11px] text-[#6B7C93]">
+                          {card.dueDate ? formatDueDate(card.dueDate) : "No due date"}
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTogglePin(listId, card, false);
+                          }}
+                          className={iconToolbarButtonClass}
+                        >
+                          <Pin className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!showCalendarStrip && upcomingCards.length > 0 && dismissedCalendar && (
+            <div className="px-6 pt-5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={toolbarButtonClass}
+                onClick={() => setShowCalendarStrip(true)}
+              >
+                Show due soon
+              </Button>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-x-auto px-6 pb-6 pt-5">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -1489,7 +1578,7 @@ export default function BoardView() {
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-3 items-start h-full">
+          <div className="flex h-full items-start gap-4">
             <SortableContext
               items={filteredLists.map((l) => l._id)}
               strategy={horizontalListSortingStrategy}
@@ -1513,12 +1602,13 @@ export default function BoardView() {
             {/* Add List - only if user can create lists */}
             {canCreateList(userRole) && (
               isAddingList ? (
-                <div className="w-72 flex-shrink-0 bg-[#EBECF0] rounded-xl p-2 animate-slide-up">
+                <div className="w-[336px] flex-shrink-0 animate-slide-up rounded-[24px] border border-[#D9E5F4] bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+                  <div className="mb-3 text-sm font-semibold text-[#102A43]">Create a new stage</div>
                   <Input
                     placeholder="Enter list title..."
                     value={newListTitle}
                     onChange={(e) => setNewListTitle(e.target.value)}
-                    className="mb-2"
+                    className="mb-3 h-11 rounded-2xl border-[#D9E5F4] bg-[#F8FBFF] px-4 shadow-none"
                     autoFocus
                     onKeyDown={(e) => e.key === "Enter" && handleAddList()}
                   />
@@ -1526,7 +1616,7 @@ export default function BoardView() {
                     <Button
                       size="sm"
                       onClick={handleAddList}
-                      className="trello-btn-primary"
+                      className="rounded-2xl bg-[#2063E9] px-4 text-white hover:bg-[#164FC0]"
                     >
                       Add list
                     </Button>
@@ -1537,9 +1627,9 @@ export default function BoardView() {
                         setIsAddingList(false);
                         setNewListTitle("");
                       }}
-                      className="h-8 w-8 p-0"
+                      className={iconToolbarButtonClass}
                     >
-                      <X className="w-4 h-4" />
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -1559,42 +1649,98 @@ export default function BoardView() {
             {activeCard && <TrelloCardOverlay card={activeCard} />}
           </DragOverlay>
         </DndContext>
-      </div>
+          </div>
 
         </div>
-        <aside className="w-80 border-l border-white/20 bg-white/90 backdrop-blur px-5 py-5 overflow-y-auto">
+        <aside className="hidden w-[320px] overflow-y-auto border-l border-[#D9E5F4] bg-[#F8FBFF] px-5 py-5 xl:block">
           <div className="mb-6">
-            <div className="text-xs font-semibold text-slate-500 mb-2">Ticket info</div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-              <div>
-                <div className="text-xs text-slate-500">Status</div>
-                <div className="text-sm font-semibold text-slate-900">Open</div>
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+              Board Summary
+            </div>
+            <div className={sidebarCardClass}>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                    Active
+                  </div>
+                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{activeRequestCount}</div>
+                </div>
+                <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                    Lists
+                  </div>
+                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{lists.length}</div>
+                </div>
+                <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                    Due Soon
+                  </div>
+                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{upcomingCards.length}</div>
+                </div>
+                <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                    Pinned
+                  </div>
+                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{pinnedCards.length}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-slate-500">Priority</div>
-                <div className="text-sm font-semibold text-slate-900">Normal</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Owner</div>
-                <div className="text-sm font-semibold text-slate-900">
+              <div className="mt-4 rounded-2xl border border-[#D9E5F4] bg-white p-4">
+                <div className="text-xs text-[#829AB1]">Owner</div>
+                <div className="mt-1 text-sm font-semibold text-[#102A43]">
                   {board.owner?.username || "Owner"}
+                </div>
+                <div className="mt-3 text-xs text-[#829AB1]">Accent</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className="h-4 w-4 rounded-full border border-white shadow-sm"
+                    style={{ backgroundColor: boardAccent }}
+                  />
+                  <span className="text-sm text-[#486581]">{board.background || "Default"}</span>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="mb-6">
-            <div className="text-xs font-semibold text-slate-500 mb-2">Members</div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+              Quick Controls
+            </div>
+            <div className={`${sidebarCardClass} space-y-2`}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowBookingDetails((prev) => !prev)}
+                className="h-11 w-full justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
+              >
+                {showBookingDetails ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+                {showBookingDetails ? "Hide card details" : "Show card details"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCalendarStrip((prev) => !prev)}
+                className="h-11 w-full justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
+              >
+                <Clock className="mr-2 h-4 w-4" />
+                {showCalendarStrip ? "Hide due soon row" : "Show due soon row"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+              Members
+            </div>
+            <div className={`${sidebarCardClass} space-y-3`}>
               {board.members?.map((m) => (
                 m.user ? (
                   <div key={m.user._id} className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600">
+                    <div className="member-avatar h-9 w-9 text-sm">
                       {m.user.username.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900 truncate">{m.user.username}</div>
-                      <div className="text-xs text-slate-500">{getRoleLabel(m.role)}</div>
+                      <div className="truncate text-sm font-semibold text-[#102A43]">{m.user.username}</div>
+                      <div className="text-xs text-[#6B7C93]">{getRoleLabel(m.role)}</div>
                     </div>
                   </div>
                 ) : null
@@ -1603,16 +1749,18 @@ export default function BoardView() {
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-slate-500 mb-2">Pinned</div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+              Pinned
+            </div>
+            <div className={`${sidebarCardClass} space-y-2`}>
               {pinnedCards.length === 0 ? (
-                <div className="text-sm text-slate-500">No pinned cards yet.</div>
+                <div className="text-sm text-[#6B7C93]">No pinned cards yet.</div>
               ) : (
                 pinnedCards.slice(0, 5).map(({ card, listId }) => (
                   <button
                     key={card._id}
                     onClick={() => handleCardClick(card, listId)}
-                    className="w-full text-left text-sm text-slate-700 hover:text-slate-900"
+                    className="w-full rounded-2xl border border-transparent bg-[#F6FAFF] px-3 py-3 text-left text-sm text-[#486581] transition hover:border-[#D9E5F4] hover:bg-white hover:text-[#102A43]"
                   >
                     {card.title}
                   </button>
@@ -1625,24 +1773,24 @@ export default function BoardView() {
 
       {/* Activity Panel */}
       {showActivity && (
-        <div className="fixed right-4 top-24 bottom-4 w-80 bg-white/95 backdrop-blur border border-white/40 rounded-2xl shadow-2xl z-40 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+        <div className="fixed bottom-5 right-5 top-24 z-40 flex w-80 flex-col rounded-[26px] border border-[#D9E5F4] bg-white/95 shadow-[0_28px_70px_rgba(15,23,42,0.18)] backdrop-blur">
+          <div className="flex items-center justify-between border-b border-[#D9E5F4] px-5 py-4">
             <div className="font-semibold text-[#0F172A]">Activity</div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowActivity(false)}
-              className="h-8 w-8 p-0"
+              className="h-9 w-9 rounded-2xl p-0 text-[#486581] hover:bg-[#F6FAFF]"
             >
               <X className="w-4 h-4" />
             </Button>
           </div>
-          <div className="px-4 py-3 border-b border-slate-200">
+          <div className="border-b border-[#D9E5F4] px-5 py-4">
             <label className="text-xs font-semibold text-[#64748B]">Filter</label>
             <select
               value={activityFilterListId}
               onChange={(e) => setActivityFilterListId(e.target.value)}
-              className="mt-2 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm"
+              className="mt-2 h-10 w-full rounded-2xl border border-[#D9E5F4] bg-white px-3 text-sm text-[#102A43]"
             >
               <option value="all">All activity</option>
               {lists.map((list) => (
@@ -1691,8 +1839,8 @@ export default function BoardView() {
 
       {/* Chat Panel */}
       {showChat && (
-        <div className="fixed right-4 top-24 bottom-4 w-[360px] bg-white/95 backdrop-blur border border-white/40 rounded-2xl shadow-2xl z-40 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+        <div className="fixed bottom-5 right-5 top-24 z-40 flex w-[360px] flex-col rounded-[26px] border border-[#D9E5F4] bg-white/95 shadow-[0_28px_70px_rgba(15,23,42,0.18)] backdrop-blur">
+          <div className="flex items-center justify-between border-b border-[#D9E5F4] px-5 py-4">
             <div>
               <div className="font-semibold text-[#0F172A]">Board chat</div>
               <div className="text-xs text-[#64748B]">
@@ -1703,13 +1851,13 @@ export default function BoardView() {
               variant="ghost"
               size="sm"
               onClick={() => setShowChat(false)}
-              className="h-8 w-8 p-0"
+              className="h-9 w-9 rounded-2xl p-0 text-[#486581] hover:bg-[#F6FAFF]"
             >
               <X className="w-4 h-4" />
             </Button>
           </div>
 
-          <div className="flex items-center gap-1 px-4 py-2 border-b border-slate-200 bg-slate-50/80">
+          <div className="flex items-center gap-1 border-b border-[#D9E5F4] bg-[#F8FBFF] px-5 py-3">
             <div className="flex -space-x-2">
               {board?.members?.slice(0, 5).map((m) => (
                 m.user ? (
@@ -1761,8 +1909,8 @@ export default function BoardView() {
                       <div
                         className={`rounded-2xl px-4 py-2 text-sm leading-relaxed shadow-sm ${
                           isMine
-                            ? "bg-gradient-to-r from-indigo-500 to-violet-500 text-white"
-                            : "bg-white border border-slate-200 text-[#0F172A]"
+                            ? "bg-gradient-to-r from-[#2063E9] to-[#17B897] text-white"
+                            : "border border-[#D9E5F4] bg-white text-[#0F172A]"
                         }`}
                       >
                         {renderChatMessage(message.body)}
@@ -1777,7 +1925,7 @@ export default function BoardView() {
             )}
           </div>
 
-          <div className="px-4 py-3 border-t border-slate-200 bg-white">
+          <div className="border-t border-[#D9E5F4] bg-white px-5 py-4">
             <div className="flex items-end gap-2">
               <div className="relative flex-1">
                 <Textarea
@@ -1833,7 +1981,7 @@ export default function BoardView() {
                 />
 
                 {showMentionList && board?.members && (
-                  <div className="absolute bottom-[calc(100%+8px)] left-0 w-full rounded-xl border border-slate-200 bg-white shadow-lg max-h-56 overflow-y-auto z-50">
+                  <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 max-h-56 w-full overflow-y-auto rounded-[20px] border border-[#D9E5F4] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
                     {getMentionCandidates()
                       .slice(0, 6)
                       .map((member, index) => (
@@ -1860,7 +2008,7 @@ export default function BoardView() {
               <Button
                 onClick={handleSendChatMessage}
                 disabled={!newChatMessage.trim()}
-                className="h-10 px-3 bg-[#6366F1] hover:bg-[#4F46E5] text-white"
+                className="h-10 rounded-2xl bg-[#2063E9] px-4 text-white hover:bg-[#164FC0]"
               >
                 <SendHorizontal className="w-4 h-4" />
               </Button>
@@ -1918,7 +2066,7 @@ export default function BoardView() {
                 {archivedCards.map((card) => (
                   <div
                     key={card._id}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 flex items-center justify-between gap-3"
+                    className="flex items-center justify-between gap-3 rounded-[20px] border border-[#D9E5F4] bg-[#F8FBFF] px-4 py-3"
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-[#0F172A] truncate">{card.title}</div>
@@ -1960,7 +2108,7 @@ export default function BoardView() {
       {/* Settings Dialog */}
       {board && (
         <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md rounded-[28px] border border-[#D9E5F4] bg-[#F8FBFF] shadow-[0_28px_70px_rgba(15,23,42,0.16)]">
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold text-[#0F172A]">
                 Board Settings
@@ -1990,7 +2138,7 @@ export default function BoardView() {
                 <select
                   value={settingsBackground}
                   onChange={(e) => setSettingsBackground(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
+                  className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]"
                 >
                   {BOARD_BACKGROUNDS.map((bg) => (
                     <option key={bg.id} value={bg.id}>
@@ -2004,7 +2152,7 @@ export default function BoardView() {
                   Cancel
                 </Button>
                 <Button
-                  className="trello-btn-primary"
+                  className="rounded-2xl bg-[#2063E9] px-4 text-white hover:bg-[#164FC0]"
                   onClick={async () => {
                     if (!boardId) return;
                     try {
