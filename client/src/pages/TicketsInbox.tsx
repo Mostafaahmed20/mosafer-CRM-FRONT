@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import FreshdeskNewLauncher, { type BoardCatalogItem } from "@/components/FreshdeskNewLauncher";
 import SidebarRail from "@/components/SidebarRail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +30,6 @@ import {
   MoreHorizontal,
   NotebookPen,
   Phone,
-  Plus,
   Reply,
   Search,
   UserPlus,
@@ -125,6 +125,7 @@ export default function TicketsInbox() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [tickets, setTickets] = useState<TicketItem[]>([]);
+  const [boardCatalog, setBoardCatalog] = useState<BoardCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [boardFilter, setBoardFilter] = useState("all");
@@ -185,6 +186,7 @@ export default function TicketsInbox() {
           list.cards.forEach((card) => next.push({ board, list, card }));
         });
       });
+      setBoardCatalog(byBoard);
       setTickets(next);
     } catch {
       toast.error("Failed to load tickets");
@@ -193,11 +195,7 @@ export default function TicketsInbox() {
     }
   };
 
-  const boards = useMemo(() => {
-    const map = new Map<string, Board>();
-    tickets.forEach((ticket) => map.set(ticket.board._id, ticket.board));
-    return Array.from(map.values());
-  }, [tickets]);
+  const boards = useMemo(() => boardCatalog.map((entry) => entry.board), [boardCatalog]);
 
   const statuses = useMemo(() => {
     const map = new Map<string, string>();
@@ -399,6 +397,45 @@ export default function TicketsInbox() {
     setTickets((prev) => prev.map((ticket) => (
       ticket.card._id === cardId ? { ...ticket, card } : ticket
     )));
+  };
+
+  const handleNewTicketCreated = ({ boardId, listId, card }: { boardId: string; listId: string; card: Card }) => {
+    const boardEntry = boardCatalog.find((entry) => entry.board._id === boardId);
+    const listEntry = boardEntry?.lists.find((list) => list._id === listId);
+    if (!boardEntry || !listEntry) {
+      void loadTickets();
+      setSelectedTicketId(card._id);
+      return;
+    }
+
+    setBoardCatalog((prev) =>
+      prev.map((entry) =>
+        entry.board._id !== boardId
+          ? entry
+          : {
+              ...entry,
+              lists: entry.lists.map((list) =>
+                list._id === listId
+                  ? {
+                      ...list,
+                      cards: [...list.cards.filter((existing) => existing._id !== card._id), card],
+                    }
+                  : list
+              ),
+            }
+      )
+    );
+
+    setTickets((prev) => [
+      { board: boardEntry.board, list: listEntry, card },
+      ...prev.filter((ticket) => ticket.card._id !== card._id),
+    ]);
+    setSelectedTicketId(card._id);
+  };
+
+  const handleBoardUpdated = (board: Board) => {
+    setBoardCatalog((prev) => prev.map((entry) => (entry.board._id === board._id ? { ...entry, board } : entry)));
+    setTickets((prev) => prev.map((ticket) => (ticket.board._id === board._id ? { ...ticket, board } : ticket)));
   };
 
   const exportTickets = (selectedOnly: boolean) => {
@@ -604,10 +641,12 @@ export default function TicketsInbox() {
               <div className="text-sm text-[#829AB1]">{filteredTickets.length}</div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white px-4">
-                <Plus className="mr-1 h-4 w-4" />
-                New
-              </Button>
+              <FreshdeskNewLauncher
+                boardCatalog={boardCatalog}
+                preferredBoardId={boardFilter !== "all" ? boardFilter : selectedTicket?.board._id}
+                onTicketCreated={handleNewTicketCreated}
+                onBoardUpdated={handleBoardUpdated}
+              />
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#829AB1]" />
                 <Input
