@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { QuotationEditor } from "./QuotationEditor";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
@@ -97,6 +98,7 @@ interface CardDetailModalProps {
   currentListId?: string;
   lists?: ListOption[];
   members?: BoardMember[];
+  boardId?: string;
 }
 
 export function CardDetailModal({
@@ -117,6 +119,7 @@ export function CardDetailModal({
   currentListId,
   lists = [],
   members = [],
+  boardId,
 }: CardDetailModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -141,6 +144,19 @@ export function CardDetailModal({
   const [ticketGroup, setTicketGroup] = useState("Operations");
   const [ticketAgent, setTicketAgent] = useState<string>("");
   const [ticketSource, setTicketSource] = useState("Agency");
+  const [salesStage, setSalesStage] = useState("New");
+  const [qualificationStatus, setQualificationStatus] = useState("Unqualified");
+  const [leadNeed, setLeadNeed] = useState("");
+  const [leadBudget, setLeadBudget] = useState(0);
+  const [travelDates, setTravelDates] = useState("");
+  const [lossReason, setLossReason] = useState("");
+  const [followUpAt, setFollowUpAt] = useState("");
+  const [followUpChannel, setFollowUpChannel] = useState("WhatsApp");
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [followUpCompleted, setFollowUpCompleted] = useState(false);
+  const [accountingStatus, setAccountingStatus] = useState("Not ready");
+  const [accountingReference, setAccountingReference] = useState("");
+  const [accountingNotes, setAccountingNotes] = useState("");
   const [handoverStatus, setHandoverStatus] = useState<"Not set" | "Resolved in shift" | "Pending for next shift">("Not set");
   const [handoverSummary, setHandoverSummary] = useState("");
   const [handoverDone, setHandoverDone] = useState("");
@@ -213,6 +229,19 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
       setTicketGroup(card.group || "Operations");
       setTicketAgent(card.agent?._id || "");
       setTicketSource(card.source || "Agency");
+      setSalesStage(card.salesStage || "New");
+      setQualificationStatus(card.qualificationStatus || "Unqualified");
+      setLeadNeed(card.leadNeed || "");
+      setLeadBudget(Number(card.leadBudget || 0));
+      setTravelDates(card.travelDates || "");
+      setLossReason(card.lossReason || "");
+      setFollowUpAt(card.followUpAt ? new Date(card.followUpAt).toISOString().slice(0, 16) : "");
+      setFollowUpChannel(card.followUpChannel || "WhatsApp");
+      setFollowUpNote(card.followUpNote || "");
+      setFollowUpCompleted(Boolean(card.followUpCompleted));
+      setAccountingStatus(card.accountingStatus || "Not ready");
+      setAccountingReference(card.accountingReference || "");
+      setAccountingNotes(card.accountingNotes || "");
       setHandoverStatus((card.handoverStatus as any) || "Not set");
       setHandoverSummary(card.handoverSummary || "");
       setHandoverDone(card.handoverDone || "");
@@ -332,7 +361,19 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     ticketStatus !== (card.status || "Requested") ||
     ticketPriority !== (card.priority || "Medium") ||
     ticketGroup !== (card.group || "Operations") ||
-    ticketAgent !== (card.agent?._id || "")
+    ticketAgent !== (card.agent?._id || "") ||
+    salesStage !== (card.salesStage || "New") ||
+    qualificationStatus !== (card.qualificationStatus || "Unqualified") ||
+    leadNeed !== (card.leadNeed || "") ||
+    leadBudget !== Number(card.leadBudget || 0) ||
+    travelDates !== (card.travelDates || "") ||
+    lossReason !== (card.lossReason || "") ||
+    followUpAt !== (card.followUpAt ? new Date(card.followUpAt).toISOString().slice(0, 16) : "") ||
+    followUpChannel !== (card.followUpChannel || "WhatsApp") ||
+    followUpNote !== (card.followUpNote || "") ||
+    followUpCompleted !== Boolean(card.followUpCompleted) ||
+    accountingReference !== (card.accountingReference || "") ||
+    accountingNotes !== (card.accountingNotes || "")
   ) : false;
 
   const isHandoverDirty = card ? (
@@ -411,6 +452,18 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
         priority: ticketPriority,
         group: ticketGroup,
         agent: ticketAgent || null,
+        salesStage,
+        qualificationStatus,
+        leadNeed,
+        leadBudget,
+        travelDates,
+        lossReason,
+        followUpAt: followUpAt || null,
+        followUpChannel,
+        followUpNote,
+        followUpCompleted,
+        accountingReference,
+        accountingNotes,
       } as any);
       toast.success("Ticket properties saved");
       setIsEditingTicketFields(false);
@@ -979,9 +1032,37 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
   const sidebarButtonClass =
     "flex w-full items-center gap-3 rounded-[18px] border border-transparent bg-[#F3F7FD] px-3.5 py-3 text-left text-sm font-medium text-[#14324B] transition hover:border-[#D8E6FB] hover:bg-white";
   const sidebarPanelClass =
-    "rounded-[24px] border border-[#D9E5F4] bg-white/90 p-4 shadow-[0_18px_38px_rgba(15,23,42,0.06)] backdrop-blur";
+    "rounded-[24px] border border-[#D9E5F4] bg-[linear-gradient(180deg,#FFFFFF_0%,#F8FBFF_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.06)]";
   const sidebarPopoverClass =
     "mt-3 rounded-[20px] border border-[#D8E6F6] bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.08)]";
+
+  const handleConvertToOrder = async (customerId: string) => {
+    if (!boardId || !currentListId || !card) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/boards/${boardId}/lists/${currentListId}/cards/${card._id}/convert-to-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        },
+        body: JSON.stringify({ customerId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || "Could not convert card to order");
+      }
+
+      await onUpdate({
+        status: "In Progress",
+        salesStage: "Won",
+        accountingStatus: "Not ready",
+      } as any);
+      toast.success(data.alreadyConverted ? "Order is linked and booking is in progress" : `Order ${data.order.orderNumber} created; continue with supplier bookings`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not convert card to order");
+    }
+  };
 
   return (
     <Dialog
@@ -992,7 +1073,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     >
       <DialogContent
         showCloseButton={false}
-        className="flex max-h-[94vh] w-[calc(100vw-1rem)] max-w-[1400px] flex-col gap-0 overflow-hidden rounded-[24px] border border-[#D9E5F4] bg-[linear-gradient(180deg,#F7FAFE_0%,#EEF4FC_100%)] p-0 shadow-[0_36px_90px_rgba(15,23,42,0.22)] sm:w-[calc(100vw-1.5rem)] sm:rounded-[32px]"
+        className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-[1180px] flex-col gap-0 overflow-hidden rounded-[24px] border border-[#D9E5F4] bg-[linear-gradient(180deg,#F7FAFE_0%,#EEF4FC_100%)] p-0 shadow-[0_36px_90px_rgba(15,23,42,0.22)] sm:w-[calc(100vw-1.5rem)] sm:rounded-[32px]"
       >
         {/* Cover */}
         {cover && (
@@ -1005,10 +1086,10 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="grid min-h-0 grid-cols-1">
           {/* Main Content */}
-          <div className="min-w-0 overflow-x-hidden bg-[linear-gradient(180deg,#FFFFFF_0%,#FBFDFF_100%)] p-4 sm:p-6 xl:p-7">
+          <div className="min-w-0 overflow-x-hidden bg-[linear-gradient(180deg,#FFFFFF_0%,#FBFDFF_100%)] p-4 sm:p-5 xl:p-6">
             {/* Header */}
             <div className="mb-5 rounded-[24px] border border-[#DCE6F5] bg-[linear-gradient(135deg,#FFFFFF_0%,#F5F9FF_100%)] p-4 shadow-[0_24px_55px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:p-5">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-3 sm:gap-4">
                     <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#2063E9_0%,#17B897_100%)] text-white shadow-[0_18px_30px_rgba(32,99,233,0.22)]">
@@ -1065,7 +1146,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 xl:max-w-[320px] xl:justify-end">
+                <div className="flex flex-wrap items-center gap-2 lg:max-w-[320px] lg:justify-end">
                   {cardDeepLink && (
                     <Button
                       variant="ghost"
@@ -1242,7 +1323,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                     </span>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
                     {bookingDetailItems.map((item) => (
                       <div
                         key={`${item.group}-${item.label}`}
@@ -1315,6 +1396,62 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                     <option key={option} value={option}>{option}</option>
                   ))}
                 </select>
+              </div>
+              <div className="md:col-span-2 rounded-[18px] border border-[#D9E5F4] bg-white p-3">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748B]">Sales workflow</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-xs font-semibold text-[#64748B]">Sales stage
+                    <select value={salesStage} onChange={(e) => setSalesStage(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
+                      {["New", "Contacted", "Qualified", "Quoted", "Follow-up", "Won", "Lost"].map((option) => <option key={option}>{option}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">Qualification
+                    <select value={qualificationStatus} onChange={(e) => setQualificationStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
+                      {["Unqualified", "Qualified", "Not a fit"].map((option) => <option key={option}>{option}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">What does the client need?
+                    <Input value={leadNeed} onChange={(e) => setLeadNeed(e.target.value)} className="mt-1" placeholder="Destination, package, preferences" />
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">Budget
+                    <Input type="number" min="0" value={leadBudget} onChange={(e) => setLeadBudget(Math.max(0, Number(e.target.value || 0)))} className="mt-1" placeholder="0" />
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">Travel dates
+                    <Input value={travelDates} onChange={(e) => setTravelDates(e.target.value)} className="mt-1" placeholder="e.g. 12-20 October" />
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">Lost reason
+                    <Input value={lossReason} onChange={(e) => setLossReason(e.target.value)} className="mt-1" placeholder="Only needed for lost leads" />
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">Follow-up date and time
+                    <Input type="datetime-local" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} className="mt-1" />
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B]">Follow-up channel
+                    <select value={followUpChannel} onChange={(e) => setFollowUpChannel(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
+                      {["WhatsApp", "Email", "Phone", "Other"].map((option) => <option key={option}>{option}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B] md:col-span-2">Follow-up note
+                    <Input value={followUpNote} onChange={(e) => setFollowUpNote(e.target.value)} className="mt-1" placeholder="What should happen next?" />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-[#486581] md:col-span-2">
+                    <input type="checkbox" checked={followUpCompleted} onChange={(e) => setFollowUpCompleted(e.target.checked)} />
+                    Follow-up completed
+                  </label>
+                </div>
+              </div>
+              <div className="md:col-span-2 rounded-[18px] border border-[#D9E5F4] bg-white p-3">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748B]">Accounting handoff</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="text-xs font-semibold text-[#64748B]">Accounting status
+                    <div className="mt-1 flex h-11 items-center rounded-2xl border border-[#D9E5F4] bg-slate-50 px-4 text-sm font-normal text-[#102A43]">{accountingStatus}</div>
+                  </div>
+                  <label className="text-xs font-semibold text-[#64748B]">Invoice or accounting reference
+                    <Input value={accountingReference} onChange={(e) => setAccountingReference(e.target.value)} className="mt-1" placeholder="Invoice number" />
+                  </label>
+                  <label className="text-xs font-semibold text-[#64748B] md:col-span-2">Accounting notes
+                    <Input value={accountingNotes} onChange={(e) => setAccountingNotes(e.target.value)} className="mt-1" placeholder="Handoff details, payment terms, commission" />
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Type</label>
@@ -1530,6 +1667,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
             </div>
           )}
         </div>
+
+        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} agencyName={card.agencyName} onClientAccepted={handleConvertToOrder} />}
 
         {/* Covering Services */}
         <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/60">
@@ -2247,8 +2386,15 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           </div>
 
           {/* Sidebar */}
-          <div className="border-t border-[#E3ECF8] bg-[linear-gradient(180deg,#F7FAFE_0%,#EFF5FC_100%)] p-4 sm:p-5">
-            <div className="grid gap-4 md:grid-cols-2">
+          <div className="mt-6 rounded-[26px] border border-[#DCE6F5] bg-[linear-gradient(180deg,#FFFFFF_0%,#F7FAFE_100%)] p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+            <div className="mb-4 flex flex-col gap-1">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Card Controls</h3>
+              <p className="text-sm text-[#5A7184]">
+                Manage structure, metadata, and lifecycle actions without leaving the ticket flow.
+              </p>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
             {canEditCard(userRole) && (
               <div className={cn(sidebarPanelClass, "h-full")}>
                 <h4 className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Add to card</h4>
@@ -2346,7 +2492,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Label Picker Popup */}
             {showLabelPicker && (
-              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+              <div className={cn(sidebarPopoverClass, "xl:col-span-2")}>
                 <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Labels</h5>
                 <div className="space-y-1">
                   {LABEL_COLORS.map((labelColor) => (
@@ -2367,7 +2513,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Date Picker Popup */}
             {showDatePicker && (
-              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+              <div className={cn(sidebarPopoverClass, "xl:col-span-2")}>
                 <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Due date</h5>
                 <Input
                   type="date"
@@ -2395,7 +2541,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Add Checklist Popup */}
             {showChecklistAdd && (
-              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+              <div className={cn(sidebarPopoverClass, "xl:col-span-2")}>
                 <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Add checklist</h5>
                 <Input
                   placeholder="Checklist title..."
@@ -2411,7 +2557,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
             {/* Move Card Picker */}
             {showMovePicker && onMove && (
-              <div className={cn(sidebarPopoverClass, "md:col-span-2 xl:col-span-1")}>
+              <div className={cn(sidebarPopoverClass, "xl:col-span-2")}>
                 <h5 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7C93]">Move to list</h5>
                 <div className="space-y-1">
                   {lists.filter((l) => l._id !== currentListId).map((list) => (
@@ -2455,4 +2601,3 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     </Dialog>
   );
 }
-

@@ -17,6 +17,11 @@ import {
   Filter,
   ArrowUpDown,
   SlidersHorizontal,
+  ArrowRight,
+  Plane,
+  Hotel,
+  PackageSearch,
+  CreditCard,
 } from "lucide-react";
 import {
   Dialog,
@@ -52,6 +57,7 @@ export default function Dashboard() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [globalQuery, setGlobalQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [selectedColor, setSelectedColor] = useState(BOARD_COLORS[0]);
@@ -140,6 +146,12 @@ export default function Dashboard() {
     setLocation("/");
   };
 
+  const handleGlobalSearch = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && globalQuery.trim()) {
+      setLocation(`/workspace/search?q=${encodeURIComponent(globalQuery.trim())}`);
+    }
+  };
+
   const filteredBoards = boards.filter((board) =>
     board.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -198,10 +210,11 @@ export default function Dashboard() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <Input
-                  placeholder="Search boards..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9 w-64 bg-slate-50 border-slate-200 rounded-full dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                  placeholder="Find order, customer, PNR..."
+                  value={globalQuery}
+                  onChange={(e) => setGlobalQuery(e.target.value)}
+                  onKeyDown={handleGlobalSearch}
+                  className="pl-9 h-10 w-64 bg-slate-50 border-slate-200 rounded-xl dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
               <NotificationBell />
@@ -230,6 +243,62 @@ export default function Dashboard() {
         <div className="flex-1 flex overflow-hidden">
           {/* Ticket list */}
           <main className="flex-1 px-6 py-6 overflow-y-auto">
+            <section className="mb-6 rounded-[28px] border border-[#D9E5F4] bg-[#102A43] p-6 text-white shadow-[0_20px_48px_rgba(15,42,67,0.14)]">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8FC9D3]">Operations hub</div>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight">Good to see you, {user?.username || "team"}</h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#B7C9DC]">
+                    Keep customer requests, booking work, and team handovers moving from one desk.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setLocation("/workspace/search")}
+                  className="h-11 rounded-xl bg-[#17B897] px-5 text-white hover:bg-[#119D84]"
+                >
+                  Open global search
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {[
+                  { label: "Work queues", value: boards.length, tone: "text-[#8FC9D3]" },
+                  { label: "Lists in view", value: boards.reduce((sum, board) => sum + (board.lists?.length || 0), 0), tone: "text-[#FFD38A]" },
+                  { label: "Active tickets", value: boards.reduce((sum, board) => sum + (board.lists || []).reduce((listSum, list) => listSum + (list.cards || []).length, 0), 0), tone: "text-[#A8E6CF]" },
+                ].map((metric) => (
+                  <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
+                    <div className="text-xs text-[#B7C9DC]">{metric.label}</div>
+                    <div className={`mt-1 text-2xl font-semibold ${metric.tone}`}>{metric.value}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: "Flight orders", icon: Plane, detail: "Find PNRs and booking references" },
+                { label: "Hotel orders", icon: Hotel, detail: "Review supplier confirmations" },
+                { label: "Packages", icon: PackageSearch, detail: "Open travel service requests" },
+                { label: "Payments", icon: CreditCard, detail: "Check payment-related tickets" },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => setLocation("/workspace/search")}
+                  className="group flex items-center gap-3 rounded-2xl border border-[#D9E5F4] bg-white px-4 py-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-[#A8C6EA]"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2063E9]">
+                    <item.icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-[#102A43]">{item.label}</span>
+                    <span className="mt-1 block truncate text-xs text-[#6B7C93]">{item.detail}</span>
+                  </span>
+                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-[#829AB1] transition group-hover:translate-x-1" />
+                </button>
+              ))}
+            </section>
+
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
                 <Button variant="ghost" size="sm" className="gap-2 text-slate-600 dark:text-slate-200">

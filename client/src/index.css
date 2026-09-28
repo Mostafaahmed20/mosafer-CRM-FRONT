@@ -6,30 +6,30 @@
 /* TaskFlow CRM Design System */
 :root {
   /* Brand Colors */
-  --tf-primary: #2063E9;
-  --tf-primary-hover: #164FC0;
-  --tf-primary-light: #EAF2FF;
-  --tf-accent: #0F766E;
-  --tf-accent-light: #E8FBF8;
+  --tf-primary: #D95D39;
+  --tf-primary-hover: #B94728;
+  --tf-primary-light: #FDE9E2;
+  --tf-accent: #167C80;
+  --tf-accent-light: #E2F4F2;
 
   /* Dark Surfaces */
-  --tf-dark: #091525;
-  --tf-dark-secondary: #0F1F33;
-  --tf-dark-tertiary: #18314F;
+  --tf-dark: #17212B;
+  --tf-dark-secondary: #22313D;
+  --tf-dark-tertiary: #304654;
 
   /* Light Surfaces */
-  --tf-bg: #F4F7FB;
-  --tf-card: #FFFFFF;
+  --tf-bg: #F7F3ED;
+  --tf-card: #FFFDFC;
 
   /* Text */
-  --tf-text: #102A43;
-  --tf-text-secondary: #486581;
-  --tf-text-muted: #829AB1;
-  --tf-text-light: #BCCCDC;
+  --tf-text: #17212B;
+  --tf-text-secondary: #53636B;
+  --tf-text-muted: #87949A;
+  --tf-text-light: #C4CCCE;
 
   /* Borders */
-  --tf-border: #E2E8F0;
-  --tf-border-light: #F1F5F9;
+  --tf-border: #E4DDD4;
+  --tf-border-light: #F0EBE5;
 
   /* Status */
   --tf-success: #10B981;
@@ -65,32 +65,32 @@
 
   /* Base Theme */
   --radius: 0.75rem;
-  --background: oklch(0.975 0.004 250);
-  --foreground: oklch(0.22 0.03 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.02 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.02 250);
-  --primary: oklch(0.55 0.2 265);
+  --background: oklch(0.965 0.012 75);
+  --foreground: oklch(0.22 0.025 220);
+  --card: oklch(0.995 0.004 75);
+  --card-foreground: oklch(0.2 0.025 220);
+  --popover: oklch(0.995 0.004 75);
+  --popover-foreground: oklch(0.2 0.025 220);
+  --primary: oklch(0.56 0.16 38);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.005 250);
-  --secondary-foreground: oklch(0.35 0.02 250);
-  --muted: oklch(0.95 0.005 250);
-  --muted-foreground: oklch(0.45 0.02 250);
-  --accent: oklch(0.95 0.005 250);
-  --accent-foreground: oklch(0.15 0.02 250);
+  --secondary: oklch(0.93 0.018 75);
+  --secondary-foreground: oklch(0.32 0.025 220);
+  --muted: oklch(0.93 0.018 75);
+  --muted-foreground: oklch(0.45 0.025 220);
+  --accent: oklch(0.93 0.045 175);
+  --accent-foreground: oklch(0.22 0.04 190);
   --destructive: oklch(0.55 0.2 25);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.9 0.005 250);
-  --input: oklch(0.9 0.005 250);
-  --ring: oklch(0.55 0.2 265);
-  --sidebar: oklch(0.12 0.02 250);
-  --sidebar-foreground: oklch(0.9 0.005 250);
-  --sidebar-accent: oklch(0.2 0.02 250);
-  --sidebar-accent-foreground: oklch(0.9 0.005 250);
-  --sidebar-border: oklch(0.25 0.02 250);
-  --sidebar-ring: oklch(0.55 0.2 265);
-  --sidebar-primary: oklch(0.55 0.2 265);
+  --border: oklch(0.88 0.018 75);
+  --input: oklch(0.88 0.018 75);
+  --ring: oklch(0.56 0.16 38);
+  --sidebar: oklch(0.2 0.025 220);
+  --sidebar-foreground: oklch(0.93 0.012 75);
+  --sidebar-accent: oklch(0.28 0.035 200);
+  --sidebar-accent-foreground: oklch(0.95 0.012 75);
+  --sidebar-border: oklch(0.34 0.03 220);
+  --sidebar-ring: oklch(0.56 0.16 38);
+  --sidebar-primary: oklch(0.56 0.16 38);
   --sidebar-primary-foreground: oklch(1 0 0);
   --chart-1: oklch(0.55 0.2 265);
   --chart-2: oklch(0.6 0.18 290);
@@ -146,9 +146,9 @@
     @apply bg-background text-foreground;
     font-family: "Plus Jakarta Sans", "Segoe UI Variable", "Inter", sans-serif;
     background:
-      radial-gradient(circle at top right, rgba(32, 99, 233, 0.06), transparent 22%),
-      radial-gradient(circle at bottom left, rgba(15, 118, 110, 0.05), transparent 24%),
-      #f4f7fb;
+      radial-gradient(circle at top right, rgba(217, 93, 57, 0.1), transparent 24%),
+      radial-gradient(circle at bottom left, rgba(22, 124, 128, 0.08), transparent 26%),
+      #f7f3ed;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -211,7 +211,7 @@
 
   .ticket-list-header {
     @apply flex items-center justify-between gap-3 rounded-t-[26px] border-b border-[#D9E5F4] px-5 py-4;
-    background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.03);
   }
 
@@ -222,6 +222,11 @@
   .ticket-list-title {
     @apply text-[15px] font-bold tracking-tight text-[#0B2239];
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .ticket-list-header .ticket-list-title,
+  .ticket-list-header button {
+    color: #0b2239;
   }
 
   .dark .ticket-list-title {
@@ -334,7 +339,7 @@
   }
 
   .ticket-status {
-    @apply rounded-full bg-[#EAF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#1E5ED8];
+    @apply rounded-full bg-[#FDE9E2] px-2.5 py-1 text-[11px] font-semibold text-[#B94728];
   }
 
   .dark .ticket-status {
@@ -452,7 +457,7 @@
   }
 
   .checklist-progress-bar {
-    @apply h-full bg-[#6366F1] transition-all duration-300 rounded-full;
+    @apply h-full bg-[#D95D39] transition-all duration-300 rounded-full;
   }
 
   .checklist-progress-complete {
@@ -474,15 +479,15 @@
   }
 
   .trello-btn-primary {
-    @apply bg-[#2063E9] text-white hover:bg-[#164FC0] shadow-sm;
+    @apply bg-[#D95D39] text-white hover:bg-[#B94728] shadow-sm;
   }
 
   .trello-btn-secondary {
-    @apply bg-[#EFF4FB] text-[#102A43] hover:bg-[#E3EDF9];
+    @apply bg-[#EDE8E1] text-[#17212B] hover:bg-[#E4DDD4];
   }
 
   .trello-btn-subtle {
-    @apply bg-transparent text-[#486581] hover:bg-[#EFF4FB];
+    @apply bg-transparent text-[#53636B] hover:bg-[#EDE8E1];
   }
 
   /* Add Card/List Button */
@@ -491,7 +496,7 @@
   }
 
   .add-card-btn:hover {
-    @apply bg-[#F4F8FF] text-[#1E5ED8];
+    @apply bg-[#FFF0EA] text-[#B94728];
   }
 
   .add-list-btn {
@@ -502,7 +507,7 @@
   .add-list-btn:hover {
     background: #ffffff;
     border-color: rgba(32, 99, 233, 0.22);
-    color: #1e5ed8;
+    color: #b94728;
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
     transform: translateY(-1px);
   }
@@ -510,7 +515,7 @@
   /* Member Avatar */
   .member-avatar {
     @apply flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold;
-    background: linear-gradient(135deg, #2063e9, #17b897);
+    background: linear-gradient(135deg, #d95d39, #167c80);
     color: white;
   }
 
@@ -538,7 +543,7 @@
 
   .comment-avatar {
     @apply w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-semibold flex-shrink-0;
-    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+    background: linear-gradient(135deg, #D95D39, #167C80);
   }
 
   .comment-bubble {

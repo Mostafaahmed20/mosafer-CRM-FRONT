@@ -5,6 +5,7 @@ interface User {
   username: string;
   email: string;
   role?: string;
+  workflowRoles?: Array<"sales" | "operations" | "accounting">;
   canViewAllAnalytics?: boolean;
 }
 

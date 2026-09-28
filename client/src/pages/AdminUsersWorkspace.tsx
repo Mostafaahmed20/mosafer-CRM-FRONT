@@ -11,7 +11,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { adminUserApi, AdminUserRecord, GlobalUserRole } from "@/lib/api";
 import { canManageGlobalUsers } from "@/lib/authz";
 
-type PendingAction = "role" | "analytics";
+type PendingAction = "role" | "workflow" | "analytics";
+const WORKFLOW_ROLES = ["sales", "operations", "accounting"] as const;
 
 export default function AdminUsersWorkspace() {
   const [, setLocation] = useLocation();
@@ -109,6 +110,21 @@ export default function AdminUsersWorkspace() {
     }
   };
 
+  const handleWorkflowRoleToggle = async (target: AdminUserRecord, role: (typeof WORKFLOW_ROLES)[number]) => {
+    const current = target.workflowRoles || [];
+    const next = current.includes(role) ? current.filter((value) => value !== role) : [...current, role];
+    setPendingAction(target._id, "workflow");
+    try {
+      const updated = await adminUserApi.setWorkflowRoles(target._id, next);
+      updateRow(updated);
+      toast.success(`Department access updated for ${target.username}`);
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to update department access");
+    } finally {
+      setPendingAction(target._id);
+    }
+  };
+
   if (!authLoading && isAuthenticated && !canManageGlobalUsers(user)) {
     return null;
   }
@@ -128,7 +144,7 @@ export default function AdminUsersWorkspace() {
                   </div>
                   <CardTitle className="text-2xl">User Management</CardTitle>
                   <CardDescription>
-                    Manage app-level roles (`admin` / `user`) and analytics dashboard access.
+                    Manage app access, Sales / Operations / Accounting access, and analytics.
                   </CardDescription>
                 </div>
                 <Button variant="outline" onClick={() => void loadUsers(true)} disabled={isRefreshing || isLoading}>
@@ -168,6 +184,7 @@ export default function AdminUsersWorkspace() {
                         <th className="px-3 py-2 text-left">User</th>
                         <th className="px-3 py-2 text-left">Email</th>
                         <th className="px-3 py-2 text-left">Role</th>
+                        <th className="px-3 py-2 text-left">Departments</th>
                         <th className="px-3 py-2 text-left">Analytics</th>
                         <th className="px-3 py-2 text-left">Verified</th>
                         <th className="px-3 py-2 text-left">Updated</th>
@@ -197,6 +214,24 @@ export default function AdminUsersWorkspace() {
                               {rowPending === "role" && (
                                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Saving role...</div>
                               )}
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex flex-col gap-1">
+                                {WORKFLOW_ROLES.map((department) => (
+                                  <label key={department} className="flex items-center gap-2 text-xs capitalize text-slate-600 dark:text-slate-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={(row.workflowRoles || []).includes(department)}
+                                      disabled={!!rowPending || row.role === "admin"}
+                                      onChange={() => void handleWorkflowRoleToggle(row, department)}
+                                      className="accent-indigo-600"
+                                    />
+                                    {department}
+                                  </label>
+                                ))}
+                              </div>
+                              {row.role === "admin" && <div className="mt-1 text-[11px] text-slate-400">All access (admin)</div>}
+                              {rowPending === "workflow" && <div className="mt-1 text-xs text-slate-500">Saving...</div>}
                             </td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-2">
@@ -232,7 +267,7 @@ export default function AdminUsersWorkspace() {
                       })}
                       {!filteredRows.length && (
                         <tr>
-                          <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                          <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                             No users found.
                           </td>
                         </tr>

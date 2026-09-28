@@ -11,6 +11,7 @@ import {
   CustomerProfile,
   CustomerTag,
   customerApi,
+  TravelerRecord,
 } from "@/lib/api";
 import { getAppSettings } from "@/lib/appSettings";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,6 +41,10 @@ const CONTACT_ROLE_OPTIONS: AgencyContactRole[] = [
 
 type FormState = {
   agencyName: string;
+  phone: string;
+  country: string;
+  language: string;
+  bookingValue: string;
   location: string;
   email: string;
   decisionRole: CustomerDecisionRole;
@@ -57,6 +62,10 @@ type ContactDraft = {
 
 const EMPTY_FORM: FormState = {
   agencyName: "",
+  phone: "",
+  country: "",
+  language: "",
+  bookingValue: "",
   location: "",
   email: "",
   decisionRole: "Decision Maker",
@@ -82,6 +91,10 @@ export default function CustomersWorkspace() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [contactDraft, setContactDraft] = useState<ContactDraft>(EMPTY_CONTACT_DRAFT);
+  const [travelersByCustomer, setTravelersByCustomer] = useState<Record<string, TravelerRecord[]>>({});
+  const [expandedTravelerCustomerId, setExpandedTravelerCustomerId] = useState<string | null>(null);
+  const [travelerDraft, setTravelerDraft] = useState({ firstName: "", lastName: "", displayNameArabic: "", email: "", phone: "", nationality: "" });
+  const [savingTraveler, setSavingTraveler] = useState(false);
 
   const isAdminUser = String((user as any)?.role || "").toLowerCase() === "admin";
   const customerRules = getAppSettings().customerRules;
@@ -103,6 +116,41 @@ export default function CustomersWorkspace() {
       toast.error(error?.message || "Failed to load customers");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const toggleCustomerTravelers = async (customer: CustomerProfile) => {
+    if (expandedTravelerCustomerId === customer._id) {
+      setExpandedTravelerCustomerId(null);
+      return;
+    }
+    setExpandedTravelerCustomerId(customer._id);
+    try {
+      const travelers = await customerApi.getTravelers(customer._id);
+      setTravelersByCustomer((previous) => ({ ...previous, [customer._id]: travelers }));
+    } catch (error: any) {
+      toast.error(error?.message || "Could not load travelers");
+    }
+  };
+
+  const saveTraveler = async (customer: CustomerProfile) => {
+    if (!travelerDraft.firstName.trim() || !travelerDraft.lastName.trim()) {
+      toast.error("First and last name are required");
+      return;
+    }
+    try {
+      setSavingTraveler(true);
+      const traveler = await customerApi.addTraveler(customer._id, travelerDraft);
+      setTravelersByCustomer((previous) => ({
+        ...previous,
+        [customer._id]: [traveler, ...(previous[customer._id] || [])],
+      }));
+      setTravelerDraft({ firstName: "", lastName: "", displayNameArabic: "", email: "", phone: "", nationality: "" });
+      toast.success("Traveler saved to customer profile");
+    } catch (error: any) {
+      toast.error(error?.message || "Could not save traveler");
+    } finally {
+      setSavingTraveler(false);
     }
   };
 
@@ -178,6 +226,10 @@ export default function CustomersWorkspace() {
 
     const payload = {
       agencyName: form.agencyName,
+      phone: form.phone,
+      country: form.country,
+      language: form.language,
+      bookingValue: form.bookingValue,
       location: form.location,
       email: form.email,
       decisionRole: form.decisionRole,
@@ -228,6 +280,10 @@ export default function CustomersWorkspace() {
     setEditingCustomerId(customer._id);
     setForm({
       agencyName: customer.agencyName,
+      phone: customer.phone || "",
+      country: customer.country || "",
+      language: customer.language || "",
+      bookingValue: customer.bookingValue || "",
       location: customer.location,
       email: customer.email,
       decisionRole: customer.decisionRole,
@@ -274,8 +330,8 @@ export default function CustomersWorkspace() {
     <div className="min-h-screen bg-[#F5F7FB] dark:bg-slate-950 flex text-slate-900 dark:text-slate-100">
       <SidebarRail />
       <div className="flex-1 p-6">
-        <div className="max-w-7xl space-y-6">
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
+        <div className="max-w-2xl space-y-6">
+          <div className="hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-2">
               <div className="h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center">
                 <Users className="h-5 w-5" />
@@ -290,16 +346,35 @@ export default function CustomersWorkspace() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[470px_1fr] gap-6">
+          <div className="grid grid-cols-1 gap-6">
             <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <div className="font-semibold">{editingCustomerId ? "Edit Agency Profile" : "Add Agency Profile"}</div>
+                <div className="font-semibold">{editingCustomerId ? "Edit Client Details" : "Add Client Details"}</div>
                 <Plus className="w-4 h-4 text-slate-400" />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2">Agency name</label>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Client name</label>
                 <Input value={form.agencyName} onChange={(e) => setForm((p) => ({ ...p, agencyName: e.target.value }))} />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Phone number</label>
+                  <Input type="tel" placeholder="+966 53 300 2349" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Country</label>
+                  <Input placeholder="Saudi Arabia" value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Language</label>
+                  <Input placeholder="Arabic" value={form.language} onChange={(e) => setForm((p) => ({ ...p, language: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Booking value</label>
+                  <Input placeholder="Value in SAR" value={form.bookingValue} onChange={(e) => setForm((p) => ({ ...p, bookingValue: e.target.value }))} />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -416,7 +491,7 @@ export default function CustomersWorkspace() {
 
               <div className="flex gap-2">
                 <Button type="submit" className="flex-1" disabled={isSaving}>
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : editingCustomerId ? "Update Agency Profile" : "Save Agency Profile"}
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : editingCustomerId ? "Update Client Details" : "Save Client Details"}
                 </Button>
                 {editingCustomerId && (
                   <Button type="button" variant="outline" onClick={resetForm} disabled={isSaving}>
@@ -515,6 +590,15 @@ export default function CustomersWorkspace() {
                             type="button"
                             size="sm"
                             variant="ghost"
+                            onClick={() => void toggleCustomerTravelers(customer)}
+                          >
+                            <Users className="mr-1 h-4 w-4" />
+                            Travelers
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
                             onClick={() => startEdit(customer)}
                             disabled={customerRules.adminOnlyEdit && !isAdminUser}
                             title={customerRules.adminOnlyEdit && !isAdminUser ? "Admin only" : "Edit agency profile"}
@@ -534,6 +618,38 @@ export default function CustomersWorkspace() {
                           </Button>
                         </div>
                       </div>
+                      {expandedTravelerCustomerId === customer._id && (
+                        <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+                          <div className="mb-3 text-sm font-semibold">Travelers linked to {customer.agencyName}</div>
+                          <div className="mb-4 flex flex-wrap gap-2">
+                            {(travelersByCustomer[customer._id] || []).map((traveler) => (
+                              <div key={traveler._id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800">
+                                <div className="font-medium">{traveler.firstName} {traveler.lastName}</div>
+                                {(traveler.displayNameArabic || traveler.nationality) && (
+                                  <div className="text-slate-500 dark:text-slate-400">
+                                    {[traveler.displayNameArabic, traveler.nationality].filter(Boolean).join(" · ")}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            {!(travelersByCustomer[customer._id] || []).length && (
+                              <div className="text-xs text-slate-500">No travelers linked yet.</div>
+                            )}
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            <Input placeholder="First name" value={travelerDraft.firstName} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, firstName: event.target.value }))} />
+                            <Input placeholder="Last name" value={travelerDraft.lastName} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, lastName: event.target.value }))} />
+                            <Input placeholder="Arabic display name" value={travelerDraft.displayNameArabic} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, displayNameArabic: event.target.value }))} />
+                            <Input placeholder="Email" type="email" value={travelerDraft.email} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, email: event.target.value }))} />
+                            <Input placeholder="Phone" value={travelerDraft.phone} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, phone: event.target.value }))} />
+                            <Input placeholder="Nationality" value={travelerDraft.nationality} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, nationality: event.target.value }))} />
+                          </div>
+                          <Button type="button" size="sm" className="mt-3" onClick={() => void saveTraveler(customer)} disabled={savingTraveler}>
+                            {savingTraveler ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                            Add traveler
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

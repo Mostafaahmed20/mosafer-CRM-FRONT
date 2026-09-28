@@ -114,7 +114,7 @@ export default function BoardView() {
   const [showBookingDetails, setShowBookingDetails] = useState<boolean>(() => {
     const key = `board:${boardId}:showBookingDetails`;
     const stored = localStorage.getItem(key);
-    return stored === null ? true : stored === "true";
+    return stored === null ? false : stored === "true";
   });
   const [activityItems, setActivityItems] = useState<Activity[]>([]);
   const [activityFilterListId, setActivityFilterListId] = useState<string>("all");
@@ -127,7 +127,7 @@ export default function BoardView() {
     const params = new URLSearchParams(window.location.search);
     return params.get("card");
   });
-  const [showCalendarStrip, setShowCalendarStrip] = useState(true);
+  const [showCalendarStrip, setShowCalendarStrip] = useState(false);
   const [dismissedCalendar, setDismissedCalendar] = useState(false);
   const [overListId, setOverListId] = useState<string | null>(null); // Track list being hovered over
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -137,6 +137,7 @@ export default function BoardView() {
   const [mentionQuery, setMentionQuery] = useState("");
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const dragSourceListIdRef = useRef<string | null>(null);
 
   // Get current user's role on this board
   const getUserRole = (): BoardRole | undefined => {
@@ -905,6 +906,7 @@ export default function BoardView() {
       l.cards.some((c) => c._id === active.id)
     );
     if (activeList) {
+      dragSourceListIdRef.current = activeList._id;
       const card = activeList.cards.find((c) => c._id === active.id);
       setActiveCard(card || null);
     }
@@ -965,10 +967,15 @@ export default function BoardView() {
     setActiveCard(null);
     setOverListId(null);
 
-    if (!over || !boardId) return;
+    if (!over || !boardId) {
+      dragSourceListIdRef.current = null;
+      return;
+    }
 
     const activeId = active.id as string;
     const overId = over.id as string;
+    const sourceListId = dragSourceListIdRef.current;
+    dragSourceListIdRef.current = null;
 
     // Check if dragging a list
     const activeListIndex = lists.findIndex((l) => l._id === activeId);
@@ -992,9 +999,9 @@ export default function BoardView() {
     }
 
     // Otherwise handle card movement
-    const activeList = lists.find((l) =>
-      l.cards.some((c) => c._id === activeId)
-    );
+    const activeList = sourceListId
+      ? lists.find((l) => l._id === sourceListId)
+      : lists.find((l) => l.cards.some((c) => c._id === activeId));
 
     if (!activeList) return;
 
@@ -1029,12 +1036,16 @@ export default function BoardView() {
       }
     } else {
       // Move to different list
-      const newPosition = overList.cards.findIndex((c) => c._id === overId);
+      const targetCards = overList.cards.filter((c) => c._id !== activeId);
+      const targetIndex = targetCards.findIndex((c) => c._id === overId);
+      const newPosition = overId === overList._id
+        ? targetCards.length
+        : targetIndex;
 
       try {
         await cardApi.reorder(boardId, activeList._id, {
           cardId: activeId,
-          newPosition: newPosition >= 0 ? newPosition : overList.cards.length,
+          newPosition: newPosition >= 0 ? newPosition : targetCards.length,
           newListId: overList._id,
         });
       } catch (error) {
@@ -1042,6 +1053,12 @@ export default function BoardView() {
         fetchBoard();
       }
     }
+  };
+
+  const handleDragCancel = () => {
+    dragSourceListIdRef.current = null;
+    setActiveCard(null);
+    setOverListId(null);
   };
 
   const getBackgroundColor = () => {
@@ -1378,9 +1395,8 @@ export default function BoardView() {
             </div>
           </div>
         </div>
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="px-6 pt-5">
+      <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="hidden px-6 pt-5">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className={summaryCardClass}>
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
@@ -1570,6 +1586,178 @@ export default function BoardView() {
             </div>
           )}
 
+          <div className="hidden px-6 pt-5">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div className={sidebarCardClass}>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Workspace Context
+                    </div>
+                    <div className="mt-2 text-lg font-semibold text-[#102A43]">{board.title}</div>
+                    <p className="mt-2 max-w-2xl text-sm text-[#6B7C93]">{boardDescription}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 lg:min-w-[280px]">
+                    <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                        Active
+                      </div>
+                      <div className="mt-1 text-xl font-semibold text-[#102A43]">{activeRequestCount}</div>
+                    </div>
+                    <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                        Lists
+                      </div>
+                      <div className="mt-1 text-xl font-semibold text-[#102A43]">{lists.length}</div>
+                    </div>
+                    <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                        Due Soon
+                      </div>
+                      <div className="mt-1 text-xl font-semibold text-[#102A43]">{upcomingCards.length}</div>
+                    </div>
+                    <div className="rounded-2xl bg-[#F6FAFF] p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                        Pinned
+                      </div>
+                      <div className="mt-1 text-xl font-semibold text-[#102A43]">{pinnedCards.length}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 border-t border-[#E8EFF8] pt-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-2xl border border-[#D9E5F4] bg-white p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                      Owner
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-[#102A43]">
+                      {board.owner?.username || "Owner"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-[#D9E5F4] bg-white p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                      Accent
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className="h-4 w-4 rounded-full border border-white shadow-sm"
+                        style={{ backgroundColor: boardAccent }}
+                      />
+                      <span className="text-sm text-[#486581]">{board.background || "Default"}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-[#D9E5F4] bg-white p-4 sm:col-span-2 xl:col-span-1">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                      View State
+                    </div>
+                    <div className="mt-1 text-sm text-[#486581]">
+                      {showBookingDetails ? "Card details visible" : "Compact card view"}
+                    </div>
+                    <div className="mt-1 text-sm text-[#486581]">
+                      {showCalendarStrip ? "Due soon row visible" : "Due soon row hidden"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+                <div className={`${sidebarCardClass} space-y-3`}>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Quick Controls
+                    </div>
+                    <p className="mt-1 text-sm text-[#6B7C93]">
+                      Keep the board layout and ticket signals aligned with the current shift.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowBookingDetails((prev) => !prev)}
+                      className="h-11 justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
+                    >
+                      {showBookingDetails ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+                      {showBookingDetails ? "Hide details" : "Show details"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowCalendarStrip((prev) => !prev)}
+                      className="h-11 justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
+                      {showCalendarStrip ? "Hide due row" : "Show due row"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowActivity(true)}
+                      className="h-11 justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
+                      Activity feed
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowArchivedDialog(true)}
+                      className="h-11 justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
+                    >
+                      <Archive className="mr-2 h-4 w-4" />
+                      Archived cards
+                    </Button>
+                  </div>
+                </div>
+
+                <div className={sidebarCardClass}>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                    Team & Pinned
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {board.members?.map((m) =>
+                      m.user ? (
+                        <div
+                          key={m.user._id}
+                          className="flex items-center gap-2 rounded-2xl border border-[#D9E5F4] bg-[#F8FBFF] px-3 py-2"
+                        >
+                          <div className="member-avatar h-8 w-8 text-sm">
+                            {m.user.username.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-[#102A43]">{m.user.username}</div>
+                            <div className="text-xs text-[#6B7C93]">{getRoleLabel(m.role)}</div>
+                          </div>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+
+                  <div className="mt-4 border-t border-[#E8EFF8] pt-4">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
+                      Pinned Requests
+                    </div>
+                    <div className="space-y-2">
+                      {pinnedCards.length === 0 ? (
+                        <div className="text-sm text-[#6B7C93]">No pinned cards yet.</div>
+                      ) : (
+                        pinnedCards.slice(0, 4).map(({ card, listId }) => (
+                          <button
+                            key={card._id}
+                            onClick={() => handleCardClick(card, listId)}
+                            className="w-full rounded-2xl border border-transparent bg-[#F6FAFF] px-3 py-3 text-left text-sm text-[#486581] transition hover:border-[#D9E5F4] hover:bg-white hover:text-[#102A43]"
+                          >
+                            {card.title}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex-1 overflow-x-auto px-6 pb-6 pt-5">
         <DndContext
           sensors={sensors}
@@ -1577,6 +1765,7 @@ export default function BoardView() {
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
           <div className="flex h-full items-start gap-4">
             <SortableContext
@@ -1650,125 +1839,6 @@ export default function BoardView() {
           </DragOverlay>
         </DndContext>
           </div>
-
-        </div>
-        <aside className="hidden w-[320px] overflow-y-auto border-l border-[#D9E5F4] bg-[#F8FBFF] px-5 py-5 xl:block">
-          <div className="mb-6">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
-              Board Summary
-            </div>
-            <div className={sidebarCardClass}>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-[#F6FAFF] p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
-                    Active
-                  </div>
-                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{activeRequestCount}</div>
-                </div>
-                <div className="rounded-2xl bg-[#F6FAFF] p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
-                    Lists
-                  </div>
-                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{lists.length}</div>
-                </div>
-                <div className="rounded-2xl bg-[#F6FAFF] p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
-                    Due Soon
-                  </div>
-                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{upcomingCards.length}</div>
-                </div>
-                <div className="rounded-2xl bg-[#F6FAFF] p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#829AB1]">
-                    Pinned
-                  </div>
-                  <div className="mt-1 text-xl font-semibold text-[#102A43]">{pinnedCards.length}</div>
-                </div>
-              </div>
-              <div className="mt-4 rounded-2xl border border-[#D9E5F4] bg-white p-4">
-                <div className="text-xs text-[#829AB1]">Owner</div>
-                <div className="mt-1 text-sm font-semibold text-[#102A43]">
-                  {board.owner?.username || "Owner"}
-                </div>
-                <div className="mt-3 text-xs text-[#829AB1]">Accent</div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span
-                    className="h-4 w-4 rounded-full border border-white shadow-sm"
-                    style={{ backgroundColor: boardAccent }}
-                  />
-                  <span className="text-sm text-[#486581]">{board.background || "Default"}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
-              Quick Controls
-            </div>
-            <div className={`${sidebarCardClass} space-y-2`}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowBookingDetails((prev) => !prev)}
-                className="h-11 w-full justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
-              >
-                {showBookingDetails ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
-                {showBookingDetails ? "Hide card details" : "Show card details"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCalendarStrip((prev) => !prev)}
-                className="h-11 w-full justify-start rounded-2xl border border-[#D9E5F4] bg-[#F6FAFF] px-4 text-[#486581] hover:bg-white"
-              >
-                <Clock className="mr-2 h-4 w-4" />
-                {showCalendarStrip ? "Hide due soon row" : "Show due soon row"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
-              Members
-            </div>
-            <div className={`${sidebarCardClass} space-y-3`}>
-              {board.members?.map((m) => (
-                m.user ? (
-                  <div key={m.user._id} className="flex items-center gap-3">
-                    <div className="member-avatar h-9 w-9 text-sm">
-                      {m.user.username.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-[#102A43]">{m.user.username}</div>
-                      <div className="text-xs text-[#6B7C93]">{getRoleLabel(m.role)}</div>
-                    </div>
-                  </div>
-                ) : null
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
-              Pinned
-            </div>
-            <div className={`${sidebarCardClass} space-y-2`}>
-              {pinnedCards.length === 0 ? (
-                <div className="text-sm text-[#6B7C93]">No pinned cards yet.</div>
-              ) : (
-                pinnedCards.slice(0, 5).map(({ card, listId }) => (
-                  <button
-                    key={card._id}
-                    onClick={() => handleCardClick(card, listId)}
-                    className="w-full rounded-2xl border border-transparent bg-[#F6FAFF] px-3 py-3 text-left text-sm text-[#486581] transition hover:border-[#D9E5F4] hover:bg-white hover:text-[#102A43]"
-                  >
-                    {card.title}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </aside>
       </div>
 
       {/* Activity Panel */}
@@ -2046,6 +2116,7 @@ export default function BoardView() {
         currentListId={selectedListId || undefined}
         lists={lists.map((l) => ({ _id: l._id, title: l.title }))}
         members={board?.members || []}
+        boardId={boardId || undefined}
       />
 
       <Dialog open={showArchivedDialog} onOpenChange={setShowArchivedDialog}>

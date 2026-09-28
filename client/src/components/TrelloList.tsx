@@ -51,10 +51,14 @@ export function TrelloList({
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
   const [requestTitle, setRequestTitle] = useState("");
   const [requestAgency, setRequestAgency] = useState("");
+  const [requestDestination, setRequestDestination] = useState("");
+  const [requestTravelers, setRequestTravelers] = useState("");
+  const [requestServices, setRequestServices] = useState<("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[]>([]);
   const [requestSource, setRequestSource] = useState("Email");
   const [requestType, setRequestType] = useState("Booking request");
   const [requestCheckIn, setRequestCheckIn] = useState("");
   const [requestCheckOut, setRequestCheckOut] = useState("");
+  const [isCreatingRequest, setIsCreatingRequest] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(list.title);
 
@@ -76,6 +80,9 @@ export function TrelloList({
   const resetIntake = () => {
     setRequestTitle("");
     setRequestAgency("");
+    setRequestDestination("");
+    setRequestTravelers("");
+    setRequestServices([]);
     setRequestSource("Email");
     setRequestType("Booking request");
     setRequestCheckIn("");
@@ -83,21 +90,29 @@ export function TrelloList({
   };
 
   const handleCreateRequest = async () => {
-    if (!requestTitle.trim() || !requestAgency.trim() || !requestSource.trim()) return;
+    if (isCreatingRequest || !requestTitle.trim() || !requestAgency.trim() || !requestSource.trim()) return;
 
-    await onAddCard({
-      title: requestTitle.trim(),
-      agencyName: requestAgency.trim(),
-      source: requestSource,
-      type: requestType,
-      checkInDate: requestCheckIn || undefined,
-      checkOutDate: requestCheckOut || undefined,
-      arrivalDate: requestCheckIn || undefined,
-      status: "Requested",
-    });
+    setIsCreatingRequest(true);
+    try {
+      await onAddCard({
+        title: requestTitle.trim(),
+        agencyName: requestAgency.trim(),
+        destination: requestDestination.trim(),
+        travelerCount: requestTravelers ? Number(requestTravelers) : 0,
+        travelServices: requestServices,
+        source: requestSource,
+        type: requestType,
+        checkInDate: requestCheckIn || undefined,
+        checkOutDate: requestCheckOut || undefined,
+        arrivalDate: requestCheckIn || undefined,
+        status: "Requested",
+      });
 
-    resetIntake();
-    setIsIntakeOpen(false);
+      resetIntake();
+      setIsIntakeOpen(false);
+    } finally {
+      setIsCreatingRequest(false);
+    }
   };
 
   const handleSaveTitle = async () => {
@@ -121,6 +136,12 @@ export function TrelloList({
     });
   };
 
+  const toggleService = (service: "Flight" | "Hotel" | "Tour" | "Transfer" | "Other") => {
+    setRequestServices((current) =>
+      current.includes(service) ? current.filter((item) => item !== service) : [...current, service]
+    );
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -141,7 +162,7 @@ export function TrelloList({
           ) : (
             <div className="flex items-center gap-2">
               <h3
-                className={`ticket-list-title min-w-0 flex-1 truncate ${canEditList(userRole) ? "cursor-pointer" : ""}`}
+                className={`ticket-list-title min-w-0 flex-1 truncate text-[#0B2239] ${canEditList(userRole) ? "cursor-pointer" : ""}`}
                 onClick={() => canEditList(userRole) && setIsEditingTitle(true)}
               >
                 {list.title}
@@ -159,7 +180,7 @@ export function TrelloList({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-9 w-9 rounded-xl p-0 text-[#6B7C93] hover:bg-[#EAF2FF] hover:text-[#1E5ED8]"
+                className="h-9 w-9 rounded-xl p-0 text-[#486581] hover:bg-[#EAF2FF] hover:text-[#1E5ED8]"
               >
                 <MoreHorizontal className="w-4 h-4" />
               </Button>
@@ -232,35 +253,29 @@ export function TrelloList({
         open={isIntakeOpen}
         onOpenChange={(open) => {
           setIsIntakeOpen(open);
-          if (!open) resetIntake();
+          if (!open && !isCreatingRequest) resetIntake();
         }}
       >
-        <DialogContent className="w-[96vw] max-w-6xl overflow-hidden rounded-[30px] border border-[#D9E5F4] bg-[#F8FBFF] p-0 shadow-[0_38px_90px_rgba(15,23,42,0.2)]">
-          <DialogHeader className="border-b border-[#D9E5F4] bg-white px-7 py-6">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.24)] sm:max-w-5xl">
+          <DialogHeader className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <DialogTitle className="text-[30px] font-semibold tracking-tight text-[#102A43]">
-                  New Ticket
+                <DialogTitle className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[28px]">
+                  Create request
                 </DialogTitle>
-                <p className="mt-2 max-w-2xl text-sm text-[#6B7C93]">
-                  Capture the customer request, route it into the right queue, and keep the booking context visible from the start.
+                <p className="mt-1.5 max-w-2xl text-sm text-slate-500">
+                  Add the essentials now. You can complete the details later.
                 </p>
               </div>
-              <div className="rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] px-4 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
-                  Destination Queue
-                </div>
-                <div className="mt-1 text-sm font-semibold text-[#102A43]">{list.title}</div>
-                <div className="mt-1 text-xs text-[#6B7C93]">
-                  {list.cards.length} existing {list.cards.length === 1 ? "ticket" : "tickets"} in this stage
-                </div>
+              <div className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">
+                Queue <span className="mx-1 text-slate-400">/</span><span className="font-semibold text-slate-900">{list.title}</span>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="bg-white px-7 py-7">
-              <div className="mb-6 rounded-[24px] border border-[#D9E5F4] bg-[#F8FBFF] p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_290px]">
+            <div className="bg-white px-5 py-6 sm:px-7">
+              <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mb-4 flex items-center gap-2">
                   <ClipboardPenLine className="h-4 w-4 text-[#2063E9]" />
                   <div className="text-sm font-semibold text-[#102A43]">Ticket details</div>
@@ -289,6 +304,54 @@ export function TrelloList({
                       placeholder="Hotel + dates + pax"
                       className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 text-base shadow-none"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                        Destination
+                      </label>
+                      <Input
+                        value={requestDestination}
+                        onChange={(e) => setRequestDestination(e.target.value)}
+                        placeholder="e.g. Istanbul, Turkey"
+                        className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                        Travelers
+                      </label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={requestTravelers}
+                        onChange={(e) => setRequestTravelers(e.target.value)}
+                        placeholder="Number of travelers"
+                        className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
+                      Requested services
+                    </label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(["Flight", "Hotel", "Tour", "Transfer", "Other"] as const).map((service) => {
+                        const selected = requestServices.includes(service);
+                        return (
+                          <button
+                            key={service}
+                            type="button"
+                            onClick={() => toggleService(service)}
+                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${selected ? "border-[#2063E9] bg-[#EAF2FF] text-[#1E5ED8]" : "border-[#D9E5F4] bg-white text-[#486581] hover:border-[#9DBCEB]"}`}
+                          >
+                            {service}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -328,7 +391,7 @@ export function TrelloList({
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-[#D9E5F4] bg-[#F8FBFF] p-5">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mb-4 flex items-center gap-2">
                   <CalendarDays className="h-4 w-4 text-[#2063E9]" />
                   <div className="text-sm font-semibold text-[#102A43]">Stay dates</div>
@@ -361,7 +424,7 @@ export function TrelloList({
               </div>
             </div>
 
-            <aside className="border-t border-[#D9E5F4] bg-[#F7FAFE] px-6 py-7 xl:border-l xl:border-t-0">
+            <aside className="border-t border-slate-200 bg-slate-50 px-5 py-6 lg:border-l lg:border-t-0">
               <div className="mb-5 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-[#2063E9]" />
                 <div className="text-sm font-semibold text-[#102A43]">Ticket preview</div>
@@ -385,6 +448,11 @@ export function TrelloList({
                     <span className="rounded-full bg-[#FFF4E5] px-2.5 py-1 text-[11px] font-semibold text-[#B45309]">
                       Requested
                     </span>
+                    {requestServices.map((service) => (
+                      <span key={service} className="rounded-full bg-[#F1F5F9] px-2.5 py-1 text-[11px] font-semibold text-[#475569]">
+                        {service}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
@@ -410,6 +478,14 @@ export function TrelloList({
                     <div className="flex items-start justify-between gap-4">
                       <span className="text-[#829AB1]">Stage</span>
                       <span className="text-right font-medium text-[#102A43]">{list.title}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-[#829AB1]">Destination</span>
+                      <span className="text-right font-medium text-[#102A43]">{requestDestination || "Not set"}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-[#829AB1]">Travelers</span>
+                      <span className="text-right font-medium text-[#102A43]">{requestTravelers || "Not set"}</span>
                     </div>
                     <div className="flex items-start justify-between gap-4">
                       <span className="text-[#829AB1]">Check-in</span>
@@ -438,7 +514,7 @@ export function TrelloList({
             </aside>
           </div>
 
-          <div className="flex items-center justify-between border-t border-[#D9E5F4] bg-white px-7 py-5">
+          <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
             <div className="text-sm text-[#6B7C93]">
               {canSubmitRequest
                 ? "Ready to create this ticket."
@@ -455,9 +531,9 @@ export function TrelloList({
               <Button
                 className="rounded-2xl bg-[#2063E9] px-5 text-white hover:bg-[#164FC0]"
                 onClick={handleCreateRequest}
-                disabled={!canSubmitRequest}
+                disabled={!canSubmitRequest || isCreatingRequest}
               >
-                Create Request
+                {isCreatingRequest ? "Creating..." : "Create Request"}
               </Button>
             </div>
           </div>

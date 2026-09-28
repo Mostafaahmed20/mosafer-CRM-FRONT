@@ -56,6 +56,10 @@ export type CustomerHistoryEvent = {
 export type CustomerProfile = {
   _id: string;
   agencyName: string;
+  phone?: string;
+  country?: string;
+  language?: string;
+  bookingValue?: string;
   location: string;
   email: string;
   decisionRole: CustomerDecisionRole;
@@ -67,8 +71,43 @@ export type CustomerProfile = {
   updatedAt: string;
 };
 
+export type TravelerRecord = {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  displayNameArabic?: string;
+  email?: string;
+  phone?: string;
+  nationality?: string;
+  dateOfBirth?: string;
+  relationship?: string;
+};
+
+export type SupplierType = "DMC" | "Hotel" | "Flight supplier" | "Online portal" | "Tour operator" | "Transfer company" | "Local supplier" | "Other";
+export type Supplier = {
+  _id: string; name: string; type: SupplierType; status: "Active" | "Inactive" | "Preferred";
+  country?: string; email?: string; phone?: string; whatsapp?: string; website?: string; currency?: string; paymentTerms?: string;
+  contacts: { name: string; role?: string; email?: string; phone?: string }[]; notes?: string;
+};
+export type SupplierCreateData = Omit<Supplier, "_id">;
+
+export const supplierApi = {
+  list: async (search = "") => {
+    const response = await fetch(`${API_URL}/api/suppliers${search ? `?q=${encodeURIComponent(search)}` : ""}`, { headers: getAuthHeaders() });
+    return handleResponse<Supplier[]>(response);
+  },
+  create: async (data: SupplierCreateData) => {
+    const response = await fetch(`${API_URL}/api/suppliers`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify(data) });
+    return handleResponse<Supplier>(response);
+  },
+};
+
 type CustomerCreateData = {
   agencyName: string;
+  phone?: string;
+  country?: string;
+  language?: string;
+  bookingValue?: string;
   location: string;
   email: string;
   decisionRole: CustomerDecisionRole;
@@ -103,6 +142,10 @@ function localCreateCustomer(data: CustomerCreateData): CustomerProfile {
   return {
     _id: `local_${Math.random().toString(36).slice(2, 10)}`,
     agencyName: data.agencyName.trim(),
+    phone: data.phone?.trim() || "",
+    country: data.country?.trim() || "",
+    language: data.language?.trim() || "",
+    bookingValue: data.bookingValue?.trim() || "",
     location: data.location.trim(),
     email: data.email.trim().toLowerCase(),
     decisionRole: data.decisionRole,
@@ -127,6 +170,10 @@ function normalizeLocalCustomerRecord(input: any): CustomerProfile {
   return {
     _id: String(input?._id || `local_${Math.random().toString(36).slice(2, 10)}`),
     agencyName: String(input?.agencyName || "").trim(),
+    phone: String(input?.phone || "").trim(),
+    country: String(input?.country || "").trim(),
+    language: String(input?.language || "").trim(),
+    bookingValue: String(input?.bookingValue || "").trim(),
     location: String(input?.location || "").trim(),
     email: String(input?.email || "").trim().toLowerCase(),
     decisionRole: (input?.decisionRole || "Decision Maker") as CustomerDecisionRole,
@@ -192,14 +239,30 @@ async function tryCustomerApi<T>(request: () => Promise<Response>, fallback: () 
 }
 
 export const customerApi = {
-  getAll: async () => {
+  getAll: async (boardId?: string) => {
     return tryCustomerApi<CustomerProfile[]>(
       () =>
-        fetch(`${API_URL}/api/customers`, {
+        fetch(`${API_URL}/api/customers${boardId ? `?boardId=${encodeURIComponent(boardId)}` : ""}`, {
           headers: getAuthHeaders(),
         }),
       () => readLocalCustomers()
     );
+  },
+
+  getTravelers: async (customerId: string) => {
+    const response = await fetch(`${API_URL}/api/customers/${encodeURIComponent(customerId)}/travelers`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<TravelerRecord[]>(response);
+  },
+
+  addTraveler: async (customerId: string, data: Partial<TravelerRecord> & { firstName: string; lastName: string }) => {
+    const response = await fetch(`${API_URL}/api/customers/${encodeURIComponent(customerId)}/travelers`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<TravelerRecord>(response);
   },
 
   create: async (data: CustomerCreateData) => {
@@ -1167,6 +1230,7 @@ export type AdminUserRecord = {
   username: string;
   email: string;
   role: GlobalUserRole;
+  workflowRoles: Array<"sales" | "operations" | "accounting">;
   canViewAllAnalytics: boolean;
   emailVerified?: boolean;
   createdAt?: string;
@@ -1179,6 +1243,7 @@ function normalizeAdminUserRecord(input: any): AdminUserRecord {
     username: String(input?.username || "Unknown"),
     email: String(input?.email || ""),
     role: String(input?.role || "user").toLowerCase() === "admin" ? "admin" : "user",
+    workflowRoles: Array.isArray(input?.workflowRoles) ? input.workflowRoles.filter((role: string) => ["sales", "operations", "accounting"].includes(role)) : ["sales", "operations", "accounting"],
     canViewAllAnalytics: Boolean(input?.canViewAllAnalytics),
     emailVerified: typeof input?.emailVerified === "boolean" ? input.emailVerified : undefined,
     createdAt: typeof input?.createdAt === "string" ? input.createdAt : undefined,
@@ -1386,6 +1451,16 @@ export const adminUserApi = {
     const raw = await handleResponse<any>(response);
     return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
   },
+
+  setWorkflowRoles: async (userId: string, workflowRoles: Array<"sales" | "operations" | "accounting">) => {
+    const response = await fetch(`${API_URL}/api/users/admin/${encodeURIComponent(userId)}/workflow-roles`, {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ workflowRoles }),
+    });
+    const raw = await handleResponse<any>(response);
+    return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
+  },
 };
 
 export const adminTicketsApi = {
@@ -1550,8 +1625,24 @@ export type CardCreateData = {
   description?: string;
   bookingRef?: string;
   agencyName?: string;
+  destination?: string;
+  travelerCount?: number;
+  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[];
   hotelName?: string;
   source?: string;
+  salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
+  qualificationStatus?: "Unqualified" | "Qualified" | "Not a fit";
+  leadNeed?: string;
+  leadBudget?: number;
+  travelDates?: string;
+  lossReason?: string;
+  followUpAt?: string | null;
+  followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
+  followUpNote?: string;
+  followUpCompleted?: boolean;
+  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Accounting received" | "Paid" | "Closed";
+  accountingReference?: string;
+  accountingNotes?: string;
   type?: string;
   checkInDate?: string;
   checkOutDate?: string;
@@ -1667,6 +1758,78 @@ export const cardApi = {
       }
     );
     return handleResponse(response);
+  },
+};
+
+export type QuotationLine = {
+  _id?: string;
+  serviceType: "Flight" | "Hotel" | "Tour" | "Transfer" | "Other";
+  description: string;
+  supplierName?: string;
+  quantity: number;
+  netRate: number;
+  sellingRate: number;
+};
+
+export type Quotation = {
+  _id: string;
+  version: number;
+  status: "Draft" | "Sent" | "Accepted" | "Rejected" | "Expired";
+  currency: string;
+  lines: QuotationLine[];
+  notes?: string;
+  createdAt: string;
+};
+
+export const quotationApi = {
+  list: async (boardId: string, cardId: string) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/quotations`, { headers: getAuthHeaders() });
+    return handleResponse<Quotation[]>(response);
+  },
+  create: async (boardId: string, cardId: string, data: Pick<Quotation, "currency" | "lines"> & { notes?: string }) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/quotations`, {
+      method: "POST", headers: getAuthHeaders(), body: JSON.stringify(data),
+    });
+    return handleResponse<Quotation>(response);
+  },
+  update: async (boardId: string, cardId: string, quotationId: string, data: Partial<Pick<Quotation, "status" | "currency" | "lines" | "notes">>) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/quotations/${quotationId}`, {
+      method: "PATCH", headers: getAuthHeaders(), body: JSON.stringify(data),
+    });
+    return handleResponse<Quotation>(response);
+  },
+};
+
+export type TravelServiceType = "Flight" | "Hotel" | "Transfer" | "Tour" | "Activity" | "Transportation" | "Visa" | "Insurance" | "Guide" | "Cruise" | "Other";
+export type TravelService = {
+  _id: string;
+  type: TravelServiceType;
+  title: string;
+  supplierName?: string;
+  pricingSource?: string;
+  supplierReference?: string;
+  currency: string;
+  netCost: number;
+  sellingPrice: number;
+  profit: number;
+  marginPercent: number;
+  status: "Requested" | "Quoted" | "Optioned" | "Confirmed" | "Cancelled";
+  details: Record<string, unknown>;
+  notes?: string;
+};
+
+export const travelServiceApi = {
+  list: async (boardId: string, cardId: string) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/services`, { headers: getAuthHeaders() });
+    return handleResponse<TravelService[]>(response);
+  },
+  create: async (boardId: string, cardId: string, data: Omit<TravelService, "_id" | "profit" | "marginPercent">) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/services`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify(data) });
+    return handleResponse<TravelService>(response);
+  },
+  remove: async (boardId: string, cardId: string, serviceId: string) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/services/${serviceId}`, { method: "DELETE", headers: getAuthHeaders() });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({ message: "Could not remove service" }))).message);
   },
 };
 
@@ -1789,6 +1952,9 @@ export type Card = {
   requester?: string;
   bookingRef?: string;
   agencyName?: string;
+  destination?: string;
+  travelerCount?: number;
+  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[];
   hotelName?: string;
   supplierName?: string;
   supplierConfirmationNumber?: string;
@@ -1801,6 +1967,19 @@ export type Card = {
   coveringStatus?: "Requested" | "Paid by VCC" | "Invoiced to agency";
   netPaidToHotel?: number;
   sellToAgency?: number;
+  salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
+  qualificationStatus?: "Unqualified" | "Qualified" | "Not a fit";
+  leadNeed?: string;
+  leadBudget?: number;
+  travelDates?: string;
+  lossReason?: string;
+  followUpAt?: string | null;
+  followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
+  followUpNote?: string;
+  followUpCompleted?: boolean;
+  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Accounting received" | "Paid" | "Closed";
+  accountingReference?: string;
+  accountingNotes?: string;
   type?: string;
   status?: string;
   priority?: string;
@@ -1846,6 +2025,9 @@ export type CardUpdateData = {
   requester?: string;
   bookingRef?: string;
   agencyName?: string;
+  destination?: string;
+  travelerCount?: number;
+  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[];
   hotelName?: string;
   supplierName?: string;
   supplierConfirmationNumber?: string;
@@ -1858,6 +2040,19 @@ export type CardUpdateData = {
   coveringStatus?: "Requested" | "Paid by VCC" | "Invoiced to agency";
   netPaidToHotel?: number;
   sellToAgency?: number;
+  salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
+  qualificationStatus?: "Unqualified" | "Qualified" | "Not a fit";
+  leadNeed?: string;
+  leadBudget?: number;
+  travelDates?: string;
+  lossReason?: string;
+  followUpAt?: string | null;
+  followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
+  followUpNote?: string;
+  followUpCompleted?: boolean;
+  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Accounting received" | "Paid" | "Closed";
+  accountingReference?: string;
+  accountingNotes?: string;
   type?: string;
   status?: string;
   priority?: string;

@@ -14,6 +14,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import BoardView from "./pages/BoardView";
+import OrdersWorkspace from "./pages/OrdersWorkspace";
 import HotelQuoteTool from "./pages/HotelQuoteTool";
 import TicketsInbox from "./pages/TicketsInbox";
 import WorkspaceFeaturePage from "./pages/WorkspaceFeaturePage";
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/tickets" component={TicketsInbox} />
+      <Route path="/orders" component={OrdersWorkspace} />
       <Route path="/workspace/:feature" component={WorkspaceFeaturePage} />
       <Route path="/tools/hotel-quote" component={HotelQuoteTool} />
       <Route path="/board/:id" component={BoardView} />
@@ -41,7 +43,7 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark" switchable>
+      <ThemeProvider defaultTheme="light" switchable>
         <AuthProvider>
           <SocketProvider>
             <TooltipProvider>

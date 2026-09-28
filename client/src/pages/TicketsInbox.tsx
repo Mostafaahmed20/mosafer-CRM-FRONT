@@ -53,6 +53,7 @@ type SavedView = "none" | "my-queue" | "today-arrivals" | "pending-confirmations
 type ComposerMode = "reply" | "note";
 
 const PRIORITY_OPTIONS = ["Urgent", "High", "Medium", "Low"];
+const CLOSED_STATUS_SET = new Set(["closed", "completed", "cancelled"]);
 
 const toDateOnly = (value?: string) => {
   if (!value) return null;
@@ -113,6 +114,8 @@ const formatDateTime = (value?: string) => {
     minute: "2-digit",
   });
 };
+
+const isClosedStatus = (status?: string) => CLOSED_STATUS_SET.has(String(status || "").trim().toLowerCase());
 
 const getPriorityPill = (priority?: string) => {
   if (priority === "Urgent") return "border-red-200 bg-red-50 text-red-700";
@@ -545,17 +548,20 @@ export default function TicketsInbox() {
     }
   };
 
-  const handleMarkDone = async (ticket: TicketItem) => {
+  const handleCloseTicket = async (ticket: TicketItem) => {
     if (!canManageTicket(ticket)) {
       toast.error("You do not have permission on this board");
       return;
     }
     try {
-      await cardApi.update(ticket.board._id, ticket.list._id, ticket.card._id, { dueComplete: true });
-      updateLocalTicket(ticket.card._id, { dueComplete: true });
-      toast.success("Marked as done");
+      const updated = await cardApi.update(ticket.board._id, ticket.list._id, ticket.card._id, {
+        status: "Closed",
+        dueComplete: true,
+      }) as Card;
+      replaceLocalCard(ticket.card._id, updated);
+      toast.success("Ticket closed");
     } catch {
-      toast.error("Failed to mark done");
+      toast.error("Failed to close ticket");
     }
   };
 
@@ -848,7 +854,7 @@ export default function TicketsInbox() {
                       <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white"><Reply className="mr-1 h-4 w-4" />Reply</Button>
                       <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white"><NotebookPen className="mr-1 h-4 w-4" />Note</Button>
                       <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white"><Forward className="mr-1 h-4 w-4" />Forward</Button>
-                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => handleMarkDone(selectedTicket)}><CheckCircle2 className="mr-1 h-4 w-4" />Close</Button>
+                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => handleCloseTicket(selectedTicket)}><CheckCircle2 className="mr-1 h-4 w-4" />Close</Button>
                       <Button variant="ghost" size="sm" className="rounded-2xl"><MoreHorizontal className="h-4 w-4" /></Button>
                     </div>
                     <div className="flex items-center gap-2">
@@ -871,7 +877,7 @@ export default function TicketsInbox() {
                           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getPriorityPill(selectedTicket.card.priority)}`}>{selectedTicket.card.priority || "Medium"}</span>
                         </div>
                       </div>
-                      <div className="shrink-0 text-3xl font-medium text-[#102A43]">{selectedTicket.card.status === "Closed" ? "Closed" : "Open"}</div>
+                      <div className="shrink-0 text-3xl font-medium text-[#102A43]">{isClosedStatus(selectedTicket.card.status) ? "Closed" : "Open"}</div>
                     </div>
 
                     <div className="mt-8 flex items-start gap-4">

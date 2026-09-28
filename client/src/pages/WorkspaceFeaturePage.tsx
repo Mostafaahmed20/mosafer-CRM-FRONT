@@ -4,16 +4,21 @@ import { Button } from "@/components/ui/button";
 import SidebarRail from "@/components/SidebarRail";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessAnalytics, canManageGlobalUsers } from "@/lib/authz";
-import { BarChart3, ClipboardList, LifeBuoy, MessageSquare, Search, Settings, Shield, Users } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, LifeBuoy, MessageSquare, Search, Settings, Shield, Users } from "lucide-react";
 import AdminTicketsInbox from "./AdminTicketsInbox";
 import AdminUsersWorkspace from "./AdminUsersWorkspace";
+import ChatWorkspace from "./ChatWorkspace";
 import CustomersWorkspace from "./CustomersWorkspace";
+import DailyOpsWorkspace from "./DailyOpsWorkspace";
+import SearchWorkspace from "./SearchWorkspace";
 import SettingsWorkspace from "./SettingsWorkspace";
+import SupportWorkspace from "./SupportWorkspace";
+import SuppliersWorkspace from "./SuppliersWorkspace";
 
 const AnalyticsWorkspace = lazy(() => import("./AnalyticsWorkspace"));
 const AuditWorkspace = lazy(() => import("./AuditWorkspace"));
 
-type FeatureKey = "analytics" | "admin-tickets" | "admin-users" | "audit" | "customers" | "search" | "chat" | "support" | "settings";
+type FeatureKey = "analytics" | "admin-tickets" | "admin-users" | "audit" | "customers" | "orders" | "suppliers" | "daily-ops" | "search" | "chat" | "support" | "settings";
 
 const FEATURE_META: Record<FeatureKey, { title: string; description: string; icon: typeof Users }> = {
   analytics: {
@@ -38,27 +43,38 @@ const FEATURE_META: Record<FeatureKey, { title: string; description: string; ico
   },
   customers: {
     title: "Customers",
-    description: "Customer workspace is now connected. Use this page as the entry point for customer-related work.",
+    description: "Travel agency profiles, contacts, account flags, and customer-level operating rules.",
     icon: Users,
+  },
+  orders: {
+    title: "Unified Orders",
+    description: "The central order workspace for bookings, item fulfillment, margins, and payment tracking.",
+    icon: ClipboardList,
+  },
+  suppliers: { title: "Suppliers", description: "Travel suppliers, pricing sources, contacts, and payment terms.", icon: Building2 },
+  "daily-ops": {
+    title: "Daily Ops",
+    description: "Daily task planning, shift coverage, completion tracking, evidence, replies, and carry-forward handling.",
+    icon: ClipboardList,
   },
   search: {
     title: "Search",
-    description: "Search workspace is now connected. Use quick links below while the full global search view is being expanded.",
+    description: "Global search across boards and tickets with direct navigation into the right queue.",
     icon: Search,
   },
   chat: {
     title: "Chat",
-    description: "Chat workspace is now connected. Start from a board to access board-specific conversations.",
+    description: "Board-level team conversations collected into one workspace for fast follow-up.",
     icon: MessageSquare,
   },
   support: {
     title: "Support",
-    description: "Support workspace is now connected. Keep docs and troubleshooting links here.",
+    description: "Operational runbooks, support guidance, and quick actions for the main service flows.",
     icon: LifeBuoy,
   },
   settings: {
     title: "Settings",
-    description: "Settings workspace is now connected. Add account and app preferences here.",
+    description: "Application preferences, appearance, and operational customer rules.",
     icon: Settings,
   },
 };
@@ -177,6 +193,23 @@ export default function WorkspaceFeaturePage() {
 
   if (feature === "customers") {
     return <CustomersWorkspace />;
+  }
+  if (feature === "suppliers") return <SuppliersWorkspace />;
+
+  if (feature === "daily-ops") {
+    return <DailyOpsWorkspace />;
+  }
+
+  if (feature === "search") {
+    return <SearchWorkspace />;
+  }
+
+  if (feature === "chat") {
+    return <ChatWorkspace />;
+  }
+
+  if (feature === "support") {
+    return <SupportWorkspace />;
   }
 
   if (feature === "analytics") {
