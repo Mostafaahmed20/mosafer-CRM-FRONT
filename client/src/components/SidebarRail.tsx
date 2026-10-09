@@ -19,7 +19,7 @@ import {
 const primaryItems = [
   { id: "cases", icon: Inbox, label: "Cases", path: "/tickets" },
   { id: "pipeline", icon: LayoutGrid, label: "Pipeline", path: "/dashboard" },
-  { id: "accounting", icon: Receipt, label: "Accounting", path: "/tickets?view=accounting" },
+  { id: "accounting", icon: Receipt, label: "Accounting", path: "/orders?view=accounting" },
   { id: "customers", icon: Users, label: "Customers", path: "/workspace/customers" },
 ];
 

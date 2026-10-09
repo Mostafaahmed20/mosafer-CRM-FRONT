@@ -174,6 +174,7 @@ export default function OrdersWorkspace() {
     hotel: "Hotel orders",
     packages: "Packages",
     payments: "Payments",
+    accounting: "Accountant queue",
     "supplier-payables": "Supplier invoices",
   };
 
@@ -294,7 +295,8 @@ export default function OrdersWorkspace() {
       || (activeView === "flight" && hasProduct("flight"))
       || (activeView === "hotel" && hasProduct("hotel"))
       || activeView === "packages"
-      || (activeView === "payments" && hasPayment);
+      || (activeView === "payments" && hasPayment)
+      || (activeView === "accounting" && ["not_ready", "sent", "received"].includes(String(order.accountingStatus || "not_ready")));
 
     if (!matchesView) return false;
 
@@ -900,7 +902,7 @@ export default function OrdersWorkspace() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder={activeView === "supplier-payables" ? "Search supplier, invoice, or order" : "Search order number or status"}
+              placeholder={activeView === "supplier-payables" ? "Search supplier, invoice, or order" : "Search order number or customer"}
               className="w-full md:w-72"
             />
             <Button onClick={() => setLocation("/dashboard")}>Back to boards</Button>
@@ -909,7 +911,7 @@ export default function OrdersWorkspace() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <div className="text-sm font-medium text-slate-600">{activeView === "supplier-payables" ? "Supplier invoices" : activeView === "all" ? "Current orders" : "Matching orders"}</div>
+            <div className="text-sm font-medium text-slate-600">{activeView === "supplier-payables" ? "Supplier invoices" : activeView === "accounting" ? "Sales ready for accountant review" : activeView === "all" ? "Current orders" : "Matching orders"}</div>
             <div className="flex items-center gap-3">
               {activeView === "supplier-payables" && (
                 <select
@@ -1003,6 +1005,7 @@ export default function OrdersWorkspace() {
                     <th className="px-3 py-2">Customer</th>
                     {activeView === "packages" && <th className="px-3 py-2">Package</th>}
                     <th className="px-3 py-2">Status</th>
+                    {activeView === "accounting" && <th className="px-3 py-2">Accounting</th>}
                     <th className="px-3 py-2">Customer total</th>
                     <th className="px-3 py-2">Cost</th>
                     <th className="px-3 py-2">Margin</th>
@@ -1209,6 +1212,7 @@ export default function OrdersWorkspace() {
                           )}
                         </td>}
                         <td className="px-3 py-3 text-slate-700">{order.status}</td>
+                        {activeView === "accounting" && <td className="px-3 py-3"><span className={`rounded-md px-2 py-1 text-xs font-medium ${order.accountingStatus === "received" ? "bg-indigo-50 text-indigo-700" : order.accountingStatus === "sent" ? "bg-amber-50 text-amber-700" : "bg-sky-50 text-sky-700"}`}>{({ not_ready: "Ready to send", sent: "Sent", received: "Received" } as Record<string, string>)[order.accountingStatus || "not_ready"]}</span></td>}
                         <td className="px-3 py-3 text-slate-700">{order.customerTotal.toFixed(2)}</td>
                         <td className="px-3 py-3 text-slate-700">{order.totalCost.toFixed(2)}</td>
                         <td className="px-3 py-3 text-slate-700">{order.grossMargin.toFixed(2)}</td>
