@@ -100,6 +100,7 @@ interface CardDetailModalProps {
   lists?: ListOption[];
   members?: BoardMember[];
   boardId?: string;
+  onClientAccepted?: (customerId: string) => Promise<void>;
 }
 
 export function CardDetailModal({
@@ -121,6 +122,7 @@ export function CardDetailModal({
   lists = [],
   members = [],
   boardId,
+  onClientAccepted,
 }: CardDetailModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -495,6 +497,21 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     } finally {
       setIsClosingSale(false);
     }
+  };
+
+  const handleRefuseAndArchive = async () => {
+    if (!card || !canEditCard(userRole)) return;
+    const reason = window.prompt("Why was the deal refused?", lossReason || "Price not accepted")?.trim();
+    if (!reason) return;
+    await handleTicketFieldUpdate({
+      salesStage: "Lost",
+      status: "Closed",
+      lossReason: reason,
+      dueComplete: true,
+      archived: true,
+    } as any);
+    toast.success("Deal archived. You can restore it from Archived cards.");
+    onClose();
   };
 
   const hasBookingCoreDetails = [
@@ -1187,6 +1204,17 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                       {card.pinned ? "Unpin" : "Pin"}
                     </Button>
                   )}
+                  {canEditCard(userRole) && !card.archived && salesStage !== "Won" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleRefuseAndArchive()}
+                      className="h-10 rounded-2xl border border-red-200 bg-white px-4 text-red-700 hover:bg-red-50"
+                    >
+                      <Archive className="mr-2 h-4 w-4 shrink-0" />
+                      Refused · archive
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1680,7 +1708,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
         </div>
 
         {boardId && card && <TravelServicesPanel boardId={boardId} requestId={card._id} />}
-        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} />}
+        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} onClientAccepted={onClientAccepted} />}
 
         {/* Covering Services */}
         <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/60">
@@ -2613,4 +2641,3 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     </Dialog>
   );
 }
-

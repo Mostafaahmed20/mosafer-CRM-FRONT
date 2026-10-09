@@ -15,11 +15,12 @@ import SettingsWorkspace from "./SettingsWorkspace";
 import SupportWorkspace from "./SupportWorkspace";
 import SuppliersWorkspace from "./SuppliersWorkspace";
 import OrdersWorkspace from "./OrdersWorkspace";
+import ConfirmedLeadsReportWorkspace from "./ConfirmedLeadsReportWorkspace";
 
 const AnalyticsWorkspace = lazy(() => import("./AnalyticsWorkspace"));
 const AuditWorkspace = lazy(() => import("./AuditWorkspace"));
 
-type FeatureKey = "analytics" | "admin-tickets" | "admin-users" | "audit" | "customers" | "orders" | "suppliers" | "daily-ops" | "search" | "chat" | "support" | "settings";
+type FeatureKey = "analytics" | "admin-tickets" | "admin-users" | "confirmed-leads-report" | "audit" | "customers" | "orders" | "suppliers" | "daily-ops" | "search" | "chat" | "support" | "settings";
 
 const FEATURE_META: Record<FeatureKey, { title: string; description: string; icon: typeof Users }> = {
   analytics: {
@@ -36,6 +37,11 @@ const FEATURE_META: Record<FeatureKey, { title: string; description: string; ico
     title: "Admin Tickets",
     description: "Global admin inbox for tickets across all boards with server-side filters and detail fetch.",
     icon: Shield,
+  },
+  "confirmed-leads-report": {
+    title: "Confirmed Leads Report",
+    description: "Global admin report of confirmed leads by all agents or one selected agent, including deal and payment details.",
+    icon: ClipboardList,
   },
   audit: {
     title: "Audit",
@@ -132,7 +138,7 @@ export default function WorkspaceFeaturePage() {
     );
   }
 
-  if ((feature === "admin-users" || feature === "admin-tickets" || feature === "audit") && !authLoading && isAuthenticated && !canManageGlobalUsers(user)) {
+  if ((feature === "admin-users" || feature === "admin-tickets" || feature === "confirmed-leads-report" || feature === "audit") && !authLoading && isAuthenticated && !canManageGlobalUsers(user)) {
     return (
       <div className="min-h-screen bg-[#F5F7FB] flex">
         <SidebarRail />
@@ -141,8 +147,10 @@ export default function WorkspaceFeaturePage() {
             <div className="rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
               <div className="text-sm text-amber-700">Access restricted</div>
               <h1 className="mt-1 text-xl font-semibold text-slate-900">
-                {feature === "admin-tickets"
+                  {feature === "admin-tickets"
                   ? "Admin tickets inbox is restricted"
+                  : feature === "confirmed-leads-report"
+                    ? "Confirmed leads report is restricted"
                   : feature === "audit"
                     ? "Audit workspace is restricted"
                     : "Admin user management is restricted"}
@@ -171,6 +179,10 @@ export default function WorkspaceFeaturePage() {
 
   if (feature === "admin-tickets") {
     return <AdminTicketsInbox />;
+  }
+
+  if (feature === "confirmed-leads-report") {
+    return <ConfirmedLeadsReportWorkspace />;
   }
 
   if (feature === "audit") {
