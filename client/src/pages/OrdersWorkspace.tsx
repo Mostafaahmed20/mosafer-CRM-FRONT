@@ -8,6 +8,10 @@ import { toast } from "sonner";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
+function orderAttachmentUrl(url: string) {
+  return /^https?:\/\//i.test(url) ? url : `${API_URL}${url}`;
+}
+
 async function getApiError(response: Response, fallback: string) {
   const body = await response.json().catch(() => null);
   return new Error(typeof body?.message === "string" ? body.message : fallback);
@@ -60,6 +64,7 @@ type PackageItem = {
 
 type Traveler = {
   _id: string;
+  travelerId?: string;
   firstName: string;
   lastName: string;
   displayNameArabic?: string;
@@ -71,9 +76,11 @@ type Fulfillment = {
   orderItemId?: string;
   supplierName?: string;
   supplierReference?: string;
+  hotelConfirmationNumber?: string;
   supplierInvoiceReference?: string;
   supplierInvoiceAmount?: number;
   supplierInvoiceDueAt?: string;
+  supplierInvoiceAttachments?: Array<{ _id?: string; name: string; url: string; type?: string; size?: number; uploadedAt?: string }>;
   supplierInvoiceSettlement?: { paid: number; outstanding: number; status: string } | null;
   supplierPayments?: Array<{ _id: string; amount: number; paymentReference?: string; paymentMethod: string; paidAt: string; recordedBy: string }>;
   serviceType?: string;
@@ -83,7 +90,7 @@ type Fulfillment = {
   tasks?: Array<{ taskId?: string; title: string; status: string }>;
 };
 
-type FulfillmentDraft = Pick<Fulfillment, "supplierName" | "supplierReference" | "serviceType" | "notes"> & {
+type FulfillmentDraft = Pick<Fulfillment, "supplierName" | "supplierReference" | "hotelConfirmationNumber" | "serviceType" | "notes"> & {
   orderItemId: string;
   supplierInvoiceReference: string;
   supplierInvoiceAmount: string;
@@ -100,6 +107,7 @@ type Payment = {
   paymentMethod?: string;
   paymentReference?: string;
   createdAt?: string;
+  attachments?: Array<{ _id?: string; name: string; url: string; type?: string; size?: number; uploadedAt?: string }>;
 };
 
 type Amendment = { _id: string; reason: string; status: "requested" | "approved" | "rejected" | "completed"; decisionNotes?: string; createdAt?: string };
@@ -138,16 +146,14 @@ export default function OrdersWorkspace() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [actionStatus, setActionStatus] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [paymentFile, setPaymentFile] = useState<File | null>(null);
   const [paymentRequestKey, setPaymentRequestKey] = useState("");
   const [amendmentsByOrder, setAmendmentsByOrder] = useState<Record<string, Amendment[]>>({});
   const [amendmentReasonDraft, setAmendmentReasonDraft] = useState("");
   const [serviceDrafts, setServiceDrafts] = useState<Record<string, ServiceDraft[]>>({});
   const [editingServices, setEditingServices] = useState<Record<string, boolean>>({});
-  const [supplierName, setSupplierName] = useState("");
-  const [supplierReference, setSupplierReference] = useState("");
   const [actionSaving, setActionSaving] = useState(false);
   const [fulfillmentByOrder, setFulfillmentByOrder] = useState<Record<string, Fulfillment[]>>({});
   const [fulfillmentDrafts, setFulfillmentDrafts] = useState<Record<string, FulfillmentDraft>>({});
@@ -159,6 +165,7 @@ export default function OrdersWorkspace() {
   const [paymentsByOrder, setPaymentsByOrder] = useState<Record<string, Payment[]>>({});
 
   const canWorkflow = (role: "sales" | "operations" | "accounting") => user?.role === "admin" || (user?.workflowRoles ? user.workflowRoles.includes(role) : true);
+  const canManageTravelers = canWorkflow("sales") || canWorkflow("operations");
 
   const activeView = new URLSearchParams(location.split("?")[1] || "").get("view") || "all";
   const viewLabels: Record<string, string> = {
@@ -267,6 +274,13 @@ export default function OrdersWorkspace() {
   };
 
   useEffect(() => {
+    const requestedOrderId = new URLSearchParams(location.split("?")[1] || "").get("orderId");
+    if (requestedOrderId && isAuthenticated) {
+      void openOrderDetails(requestedOrderId);
+    }
+  }, [location, isAuthenticated]);
+
+  useEffect(() => {
     if (isAuthenticated && activeView === "supplier-payables") {
       void loadSupplierPayables();
     }
@@ -279,7 +293,7 @@ export default function OrdersWorkspace() {
     const matchesView = activeView === "all"
       || (activeView === "flight" && hasProduct("flight"))
       || (activeView === "hotel" && hasProduct("hotel"))
-      || (activeView === "packages" && Boolean(packageSummaries[order._id]?.length))
+      || activeView === "packages"
       || (activeView === "payments" && hasPayment);
 
     if (!matchesView) return false;
@@ -316,7 +330,6 @@ export default function OrdersWorkspace() {
   });
 
   const selectedOrder = orders.find((order) => order._id === selectedOrderId) || null;
-  const selectedPackage = selectedOrder ? packageSummaries[selectedOrder._id]?.[0] : undefined;
   const selectedFulfillment = selectedOrder ? fulfillmentByOrder[selectedOrder._id] || [] : [];
   const selectedPayments = selectedOrder ? paymentsByOrder[selectedOrder._id] || [] : [];
   const selectedAmendments = selectedOrder ? amendmentsByOrder[selectedOrder._id] || [] : [];
@@ -330,27 +343,6 @@ export default function OrdersWorkspace() {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
-  };
-
-  const updateOrderStatus = async () => {
-    if (!selectedOrder || !actionStatus || actionStatus === selectedOrder.status) return;
-    try {
-      setActionSaving(true);
-      const response = await fetch(`${API_URL}/api/orders/${selectedOrder._id}`, {
-        method: "PATCH",
-        headers: orderHeaders(),
-        body: JSON.stringify({ status: actionStatus }),
-      });
-      if (!response.ok) throw new Error("Could not update order status");
-      const updated = await response.json();
-      setOrders((current) => current.map((order) => order._id === updated._id ? updated : order));
-      setActionStatus("");
-      toast.success("Order status updated");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update order status");
-    } finally {
-      setActionSaving(false);
-    }
   };
 
   const recordPayment = async () => {
@@ -369,17 +361,57 @@ export default function OrdersWorkspace() {
       });
       if (!response.ok) throw await getApiError(response, "Could not record payment");
       const result = await response.json().catch(() => ({}));
+      const savedPayment = result?.payment || result;
       if (result?.duplicate) await loadOrders();
       else setOrders((current) => current.map((order) => order._id === selectedOrder._id
         ? { ...order, amountPaid: order.amountPaid + Number(paymentAmount), balance: Math.max(0, order.balance - Number(paymentAmount)) }
         : order));
+      if (paymentFile && savedPayment?._id) {
+        const formData = new FormData();
+        formData.append("file", paymentFile);
+        const token = localStorage.getItem("token");
+        const attachmentResponse = await fetch(`${API_URL}/api/orders/${selectedOrder._id}/payments/${savedPayment._id}/attachments`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        });
+        if (!attachmentResponse.ok) {
+          await loadPayments(selectedOrder._id);
+          throw new Error(`Payment was recorded, but its attachment could not be uploaded: ${(await getApiError(attachmentResponse, "Upload failed")).message}`);
+        }
+      } else if (paymentFile) {
+        throw new Error("Payment was recorded, but no payment record was returned for the attachment. Retry with the same amount and reference.");
+      }
       setPaymentAmount("");
       setPaymentReference("");
+      setPaymentFile(null);
       setPaymentRequestKey("");
       await loadPayments(selectedOrder._id);
+      await loadAccountingReadiness(selectedOrder._id);
       toast.success("Payment recorded");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not record payment. Retry safely to check the same payment.");
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
+  const uploadSupplierInvoice = async (orderId: string, fulfillmentId: string, file: File) => {
+    try {
+      setActionSaving(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/api/orders/${orderId}/fulfillment/${fulfillmentId}/invoice-attachments`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!response.ok) throw await getApiError(response, "Could not upload supplier invoice");
+      await loadFulfillment(orderId);
+      toast.success("Supplier invoice attached");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not upload supplier invoice");
     } finally {
       setActionSaving(false);
     }
@@ -420,6 +452,7 @@ export default function OrdersWorkspace() {
         [orderId]: (current[orderId] || []).map((item) => item._id === updated._id ? updated : item),
       }));
       await loadOrders();
+      await loadAccountingReadiness(orderId);
       toast.success("Fulfillment status updated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update fulfillment status");
@@ -459,6 +492,7 @@ export default function OrdersWorkspace() {
         body: JSON.stringify({
           supplierName: draft.supplierName.trim(),
           supplierReference: draft.supplierReference?.trim() || "",
+          hotelConfirmationNumber: draft.hotelConfirmationNumber?.trim() || "",
           serviceType: draft.serviceType || "other",
           notes: draft.notes?.trim() || "",
           orderItemId: draft.orderItemId || null,
@@ -475,6 +509,7 @@ export default function OrdersWorkspace() {
       }));
       await loadFulfillment(orderId);
       await loadOrders();
+      await loadAccountingReadiness(orderId);
       if (activeView === "supplier-payables") void loadSupplierPayables();
       setEditingFulfillmentId(null);
       toast.success("Supplier details saved");
@@ -483,6 +518,27 @@ export default function OrdersWorkspace() {
     } finally {
       setActionSaving(false);
     }
+  };
+
+  const beginFulfillmentEdit = (item: Fulfillment) => {
+    setFulfillmentDrafts((drafts) => ({
+      ...drafts,
+      [item._id]: {
+        orderItemId: item.orderItemId || "",
+        supplierName: item.supplierName || "",
+        supplierReference: item.supplierReference || "",
+        hotelConfirmationNumber: item.hotelConfirmationNumber || "",
+        supplierInvoiceReference: item.supplierInvoiceReference || "",
+        supplierInvoiceAmount: item.supplierInvoiceAmount === undefined ? "" : String(item.supplierInvoiceAmount),
+        supplierInvoiceDueAt: item.supplierInvoiceDueAt ? item.supplierInvoiceDueAt.slice(0, 10) : "",
+        serviceType: item.serviceType || "other",
+        notes: item.notes || "",
+      },
+    }));
+    setEditingFulfillmentId(item._id);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`fulfillment-${item._id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   };
 
   const recordSupplierPayment = async (orderId: string, fulfillment: Fulfillment) => {
@@ -525,28 +581,6 @@ export default function OrdersWorkspace() {
     }
   };
 
-  const updateFulfillmentTask = async (orderId: string, fulfillment: Fulfillment, taskIndex: number, status: string) => {
-    const tasks = (fulfillment.tasks || []).map((task, index) => index === taskIndex ? { ...task, status } : task);
-    try {
-      setActionSaving(true);
-      const response = await fetch(`${API_URL}/api/orders/${orderId}/fulfillment/${fulfillment._id}`, {
-        method: "PATCH",
-        headers: orderHeaders(),
-        body: JSON.stringify({ tasks }),
-      });
-      if (!response.ok) throw await getApiError(response, "Could not update fulfillment task");
-      const updated = await response.json();
-      setFulfillmentByOrder((current) => ({
-        ...current,
-        [orderId]: (current[orderId] || []).map((item) => item._id === updated._id ? updated : item),
-      }));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update fulfillment task");
-    } finally {
-      setActionSaving(false);
-    }
-  };
-
   useEffect(() => {
     if (selectedOrderId) {
       void loadFulfillment(selectedOrderId);
@@ -555,30 +589,6 @@ export default function OrdersWorkspace() {
       void loadAmendments(selectedOrderId);
     }
   }, [selectedOrderId]);
-
-  const createFulfillment = async () => {
-    if (!selectedOrder || !supplierName.trim()) {
-      toast.error("Enter a supplier name");
-      return;
-    }
-    try {
-      setActionSaving(true);
-      const response = await fetch(`${API_URL}/api/orders/${selectedOrder._id}/fulfillment`, {
-        method: "POST",
-        headers: orderHeaders(),
-        body: JSON.stringify({ supplierName: supplierName.trim(), supplierReference: supplierReference.trim(), serviceType: "travel_service", status: "pending", tasks: [{ title: "Confirm supplier booking", status: "pending" }] }),
-      });
-      if (!response.ok) throw await getApiError(response, "Could not create fulfillment task");
-      setSupplierName("");
-      setSupplierReference("");
-      await loadFulfillment(selectedOrder._id);
-      toast.success("Supplier fulfillment task created");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create fulfillment task");
-    } finally {
-      setActionSaving(false);
-    }
-  };
 
   const ensurePackageDraft = (orderId: string, existingSummary?: OrderPackageSummary) => {
     setPackageDrafts((previous) => ({
@@ -643,6 +653,11 @@ export default function OrdersWorkspace() {
       }
     }
   };
+
+  useEffect(() => {
+    if (!selectedOrder || activeView !== "packages") return;
+    void loadPackageEditorData(selectedOrder, packageSummaries[selectedOrder._id]?.[0]);
+  }, [activeView, selectedOrderId, selectedOrder?._id, packageSummaries[selectedOrder?._id || ""]?.[0]?.packageId]);
 
   const loadAmendments = async (orderId: string) => {
     const response = await fetch(`${API_URL}/api/orders/${orderId}/amendments`, { headers: orderHeaders() });
@@ -762,7 +777,13 @@ export default function OrdersWorkspace() {
         ...previous,
         [order._id]: [snapshot, ...(previous[order._id] || [])],
       }));
+      setPackageDrafts((previous) => {
+        const draft = previous[order._id];
+        return draft ? { ...previous, [order._id]: { ...draft, travelerIds: Array.from(new Set([...draft.travelerIds, snapshot._id])) } } : previous;
+      });
       setSelectedCustomerTraveler((previous) => ({ ...previous, [order._id]: "" }));
+      await loadOrderPackageSummaries(order._id);
+      await loadAccountingReadiness(order._id);
       toast.success("Traveler snapshot added to order");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not add traveler to order");
@@ -784,12 +805,23 @@ export default function OrdersWorkspace() {
       });
       if (!response.ok) throw await getApiError(response, "Could not save customer traveler");
       const traveler = await response.json();
+      const snapshotResponse = await fetch(`${API_URL}/api/orders/${order._id}/travelers`, {
+        method: "POST",
+        headers: orderHeaders(),
+        body: JSON.stringify({ travelerId: traveler._id }),
+      });
+      if (!snapshotResponse.ok) throw await getApiError(snapshotResponse, "Traveler was saved to the customer but could not be attached to this sale");
+      const snapshot = await snapshotResponse.json();
       setCustomerTravelers((previous) => ({
         ...previous,
         [order._id]: [traveler, ...(previous[order._id] || [])],
       }));
-      setSelectedCustomerTraveler((previous) => ({ ...previous, [order._id]: traveler._id }));
+      setTravelers((previous) => ({ ...previous, [order._id]: [snapshot, ...(previous[order._id] || [])] }));
+      setSelectedCustomerTraveler((previous) => ({ ...previous, [order._id]: "" }));
+      await loadOrderPackageSummaries(order._id);
+      await loadAccountingReadiness(order._id);
       setNewTravelerDrafts((previous) => ({ ...previous, [order._id]: { firstName: "", lastName: "" } }));
+      setShowAddTraveler((previous) => ({ ...previous, [order._id]: false }));
       toast.success("Traveler saved to this customer");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save customer traveler");
@@ -825,7 +857,6 @@ export default function OrdersWorkspace() {
               packageName: draft.packageName,
               status: draft.status,
               travelerIds: draft.travelerIds,
-              items: draft.items,
             }),
           })
         : await fetch(`${API_URL}/api/orders/${order._id}/packages`, {
@@ -838,7 +869,6 @@ export default function OrdersWorkspace() {
               packageName: draft.packageName,
               status: draft.status,
               travelerIds: draft.travelerIds,
-              items: draft.items,
             }),
           });
 
@@ -847,6 +877,7 @@ export default function OrdersWorkspace() {
       }
 
       await loadOrderPackageSummaries(order._id);
+      await loadAccountingReadiness(order._id);
       setPackageFormOpen((previous) => ({ ...previous, [order._id]: false }));
       toast.success(existingSummary ? "Package updated" : "Package created");
     } catch (error) {
@@ -961,7 +992,7 @@ export default function OrdersWorkspace() {
             </div>
           ) : filteredOrders.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 p-8 text-sm text-slate-500">
-              No orders yet. Create one from the unified order API or the board workflow.
+              No orders yet. Accept a quotation from a lead to create an order.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -970,7 +1001,7 @@ export default function OrdersWorkspace() {
                   <tr>
                     <th className="px-3 py-2">Order</th>
                     <th className="px-3 py-2">Customer</th>
-                    <th className="px-3 py-2">Package</th>
+                    {activeView === "packages" && <th className="px-3 py-2">Package</th>}
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Customer total</th>
                     <th className="px-3 py-2">Cost</th>
@@ -995,7 +1026,7 @@ export default function OrdersWorkspace() {
                           <div className="font-medium text-slate-800">{customerLabel(order.customerId)}</div>
                           {typeof order.customerId !== "string" && order.customerId.email && <div className="text-xs text-slate-500">{order.customerId.email}</div>}
                         </td>
-                        <td className="px-3 py-3">
+                        {activeView === "packages" && <td className="px-3 py-3">
                           {summary ? (
                             <div>
                               <div className="font-medium text-slate-900">{summary.packageName}</div>
@@ -1128,114 +1159,19 @@ export default function OrdersWorkspace() {
                                   + Save another traveler
                                 </Button>
                               )}
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="text-xs font-medium text-slate-600">Itinerary services</div>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      setPackageDrafts((previous) => {
-                                        const draft = previous[order._id] || {
-                                          packageName: `${order.orderNumber} package`,
-                                          status: "draft",
-                                          travelerIds: [],
-                                          items: [],
-                                        };
-                                        return {
-                                          ...previous,
-                                          [order._id]: {
-                                            ...draft,
-                                            items: [...draft.items, { title: "", serviceType: "other" }],
-                                          },
-                                        };
-                                      })
-                                    }
-                                  >
-                                    Add service
-                                  </Button>
-                                </div>
-                                {(packageDrafts[order._id]?.items || []).map((item, itemIndex) => (
-                                  <div key={`${order._id}-item-${itemIndex}`} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-2">
-                                    <Input
-                                      value={item.title}
-                                      placeholder="Service title"
-                                      onChange={(event) =>
-                                        setPackageDrafts((previous) => {
-                                          const draft = previous[order._id]!;
-                                          const items = draft.items.map((current, index) => index === itemIndex ? { ...current, title: event.target.value } : current);
-                                          return { ...previous, [order._id]: { ...draft, items } };
-                                        })
-                                      }
-                                      className="h-8"
-                                    />
-                                    <div className="flex gap-2">
-                                      <select
-                                        value={item.serviceType}
-                                        onChange={(event) =>
-                                          setPackageDrafts((previous) => {
-                                            const draft = previous[order._id]!;
-                                            const items = draft.items.map((current, index) => index === itemIndex ? { ...current, serviceType: event.target.value } : current);
-                                            return { ...previous, [order._id]: { ...draft, items } };
-                                          })
-                                        }
-                                        className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
-                                      >
-                                        <option value="flight">Flight</option>
-                                        <option value="hotel">Hotel</option>
-                                        <option value="transfer">Transfer</option>
-                                        <option value="activity">Activity</option>
-                                        <option value="other">Other</option>
-                                      </select>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                          setPackageDrafts((previous) => {
-                                            const draft = previous[order._id]!;
-                                            return { ...previous, [order._id]: { ...draft, items: draft.items.filter((_, index) => index !== itemIndex) } };
-                                          })
-                                        }
-                                      >
-                                        Remove
-                                      </Button>
+                              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-medium text-slate-600">Services included in this sale</div>
+                                <div className="mt-2 space-y-1">
+                                  {(order.items || []).map((item, index) => (
+                                    <div key={`${order._id}-sale-service-${index}`} className="flex justify-between gap-3 text-xs text-slate-700">
+                                      <span>{String(item.description || "Travel service")}</span>
+                                      <span>{String(item.productType || "service")}</span>
                                     </div>
-                                    <label className="space-y-1 text-xs text-slate-500">
-                                      Start date
-                                      <Input
-                                        type="date"
-                                        value={item.startDate || ""}
-                                        onChange={(event) =>
-                                          setPackageDrafts((previous) => {
-                                            const draft = previous[order._id]!;
-                                            const items = draft.items.map((current, index) => index === itemIndex ? { ...current, startDate: event.target.value } : current);
-                                            return { ...previous, [order._id]: { ...draft, items } };
-                                          })
-                                        }
-                                        className="h-8"
-                                      />
-                                    </label>
-                                    <label className="space-y-1 text-xs text-slate-500">
-                                      End date
-                                      <Input
-                                        type="date"
-                                        value={item.endDate || ""}
-                                        onChange={(event) =>
-                                          setPackageDrafts((previous) => {
-                                            const draft = previous[order._id]!;
-                                            const items = draft.items.map((current, index) => index === itemIndex ? { ...current, endDate: event.target.value } : current);
-                                            return { ...previous, [order._id]: { ...draft, items } };
-                                          })
-                                        }
-                                        className="h-8"
-                                      />
-                                    </label>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex gap-2">
+                                  ))}
+                                  {!(order.items || []).length && <div className="text-xs text-amber-700">No services are on this order yet. Add them to the quotation or sale once; they will appear here.</div>}
+                                </div>
+                                <div className="mt-2 text-[11px] text-slate-500">This list comes from the order. You don’t need to add the same services again to the package.</div>
+                              </div>                              <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
@@ -1271,7 +1207,7 @@ export default function OrdersWorkspace() {
                               </Button>
                             </div>
                           )}
-                        </td>
+                        </td>}
                         <td className="px-3 py-3 text-slate-700">{order.status}</td>
                         <td className="px-3 py-3 text-slate-700">{order.customerTotal.toFixed(2)}</td>
                         <td className="px-3 py-3 text-slate-700">{order.totalCost.toFixed(2)}</td>
@@ -1303,33 +1239,16 @@ export default function OrdersWorkspace() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 border-b border-slate-100 pb-4 lg:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 p-3">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Lifecycle</div>
-                <div className="flex gap-2">
-                  <select value={actionStatus || selectedOrder.status} disabled={!canWorkflow("sales")} onChange={(event) => setActionStatus(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700">
-                    {[
-                      "draft", "quoted", "awaiting_customer", "reserved", "partially_paid", "confirmed", "ticketed_vouchered", "in_travel", "completed", "cancelled", "refunded",
-                    ].map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
-                  </select>
-                  <Button type="button" size="sm" disabled={!canWorkflow("sales") || actionSaving || !actionStatus || actionStatus === selectedOrder.status} onClick={() => void updateOrderStatus()}>Save</Button>
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 p-3">
+            <div className="mt-4 border-b border-slate-100 pb-4">
+              <div className="max-w-2xl rounded-xl border border-slate-200 p-3">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Record payment</div>
                 {canWorkflow("accounting") ? <div className="flex flex-wrap gap-2">
                   <Input type="number" min="0" value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentRequestKey(""); }} placeholder={`Amount in ${selectedOrder.currency}`} className="h-9 min-w-0 flex-1" />
                   <Input value={paymentReference} onChange={(event) => { setPaymentReference(event.target.value); setPaymentRequestKey(""); }} placeholder="Receipt/reference (optional)" className="h-9 min-w-0 flex-1" />
+                  <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx" aria-label="Payment receipt attachment" className="h-9 min-w-0 flex-1 text-xs" onChange={(event) => setPaymentFile(event.target.files?.[0] || null)} />
                   <Button type="button" size="sm" disabled={actionSaving} onClick={() => void recordPayment()}>Post</Button>
                 </div> : <div className="text-xs text-slate-500">Accounting access is required to post customer payments.</div>}
-              </div>
-              <div className="rounded-xl border border-slate-200 p-3">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Supplier fulfillment</div>
-                <div className="flex gap-2">
-                  <Input value={supplierName} onChange={(event) => setSupplierName(event.target.value)} placeholder="Supplier" className="h-9 min-w-0" />
-                  <Input value={supplierReference} onChange={(event) => setSupplierReference(event.target.value)} placeholder="Reference" className="h-9 min-w-0" />
-                  <Button type="button" size="sm" disabled={!canWorkflow("operations") || actionSaving} onClick={() => void createFulfillment()}>Add</Button>
-                </div>
+                {paymentFile && <div className="mt-1 text-xs text-slate-500">Receipt: {paymentFile.name}</div>}
               </div>
             </div>
 
@@ -1390,7 +1309,7 @@ export default function OrdersWorkspace() {
                   </div>
                   <div className="mt-4 border-t border-slate-100 pt-3">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Payment history</div>
-                    {selectedPayments.length === 0 ? <div className="text-xs text-slate-500">No payments recorded.</div> : <div className="space-y-1.5">{selectedPayments.map((payment) => <div key={payment._id} className="flex items-center justify-between text-xs"><span className="text-slate-500">{payment.paymentMethod || "Payment"}{payment.paymentReference ? ` · ${payment.paymentReference}` : ""}{payment.createdAt ? ` · ${new Date(payment.createdAt).toLocaleDateString()}` : ""}</span><span className={payment.status === "refunded" ? "font-medium text-red-600" : "font-medium text-emerald-700"}>{payment.status === "refunded" ? "-" : ""}{Number(payment.amount || 0).toFixed(2)} {payment.currency}</span></div>)}</div>}
+                    {selectedPayments.length === 0 ? <div className="text-xs text-slate-500">No payments recorded.</div> : <div className="space-y-2">{selectedPayments.map((payment) => <div key={payment._id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs"><span className="text-slate-500">{payment.paymentMethod || "Payment"}{payment.status ? ` · ${payment.status}` : ""}{payment.paymentReference ? ` · ${payment.paymentReference}` : ""}{payment.createdAt ? ` · ${new Date(payment.createdAt).toLocaleDateString()}` : ""}</span><span className={payment.status === "refunded" ? "font-medium text-red-600" : "font-medium text-emerald-700"}>{payment.status === "refunded" ? "-" : ""}{Number(payment.amount || 0).toFixed(2)} {payment.currency}</span>{payment.attachments?.map((attachment, index) => <a key={attachment._id || `${payment._id}-${index}`} href={orderAttachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="w-full text-blue-700 underline">Receipt: {attachment.name}</a>)}</div>)}</div>}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
@@ -1456,46 +1375,79 @@ export default function OrdersWorkspace() {
                 )}
                 <div className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-slate-800">Package</div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!canWorkflow("operations")}
-                      onClick={() => {
-                        ensurePackageDraft(selectedOrder._id, selectedPackage);
-                        void loadPackageEditorData(selectedOrder, selectedPackage);
-                        setPackageFormOpen((previous) => ({ ...previous, [selectedOrder._id]: true }));
-                        document.getElementById(`order-row-${selectedOrder._id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }}
+                    <div className="text-sm font-semibold text-slate-800">Travelers on this sale</div>
+                    {!canManageTravelers && <span className="text-xs text-slate-500">Sales or Operations role required</span>}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {(travelers[selectedOrder._id] || []).map((traveler) => (
+                      <div key={traveler._id} className="rounded-md bg-slate-50 px-2 py-1.5 text-sm text-slate-700">
+                        {traveler.firstName} {traveler.lastName}
+                      </div>
+                    ))}
+                    {travelers[selectedOrder._id]?.length === 0 && <div className="text-xs text-amber-700">No traveler attached yet.</div>}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <select
+                      value={selectedCustomerTraveler[selectedOrder._id] || ""}
+                      disabled={!canManageTravelers}
+                      onChange={(event) => setSelectedCustomerTraveler((current) => ({ ...current, [selectedOrder._id]: event.target.value }))}
+                      className="h-9 min-w-48 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700"
                     >
-                      {selectedPackage ? "Edit package" : "Create package"}
+                      <option value="">{customerTravelers[selectedOrder._id]?.length ? "Choose a traveler" : "No saved travelers"}</option>
+                      {(customerTravelers[selectedOrder._id] || []).filter((traveler) => !(travelers[selectedOrder._id] || []).some((attached) => attached.travelerId === traveler._id)).map((traveler) => (
+                        <option key={traveler._id} value={traveler._id}>{traveler.firstName} {traveler.lastName}</option>
+                      ))}
+                    </select>
+                    <Button type="button" size="sm" variant="outline" disabled={!canManageTravelers || !selectedCustomerTraveler[selectedOrder._id]} onClick={() => void addCustomerTravelerToOrder(selectedOrder)}>
+                      Add traveler
                     </Button>
                   </div>
-                  {selectedPackage ? (
-                    <div className="mt-2 text-sm text-slate-600">{selectedPackage.packageName}<div className="text-xs text-slate-500">{selectedPackage.status} · {selectedPackage.travelerCount} travelers · {selectedPackage.itemCount} services</div></div>
-                  ) : <div className="mt-2 text-sm text-slate-500">No package linked.</div>}
+                  {(showAddTraveler[selectedOrder._id] || !(customerTravelers[selectedOrder._id] || []).length) ? (
+                    <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+                      <Input
+                        value={newTravelerDrafts[selectedOrder._id]?.firstName || ""}
+                        onChange={(event) => setNewTravelerDrafts((current) => ({ ...current, [selectedOrder._id]: { firstName: event.target.value, lastName: current[selectedOrder._id]?.lastName || "" } }))}
+                        placeholder="First name"
+                        className="h-9"
+                        disabled={!canManageTravelers}
+                      />
+                      <Input
+                        value={newTravelerDrafts[selectedOrder._id]?.lastName || ""}
+                        onChange={(event) => setNewTravelerDrafts((current) => ({ ...current, [selectedOrder._id]: { firstName: current[selectedOrder._id]?.firstName || "", lastName: event.target.value } }))}
+                        placeholder="Last name"
+                        className="h-9"
+                        disabled={!canManageTravelers}
+                      />
+                      <Button type="button" size="sm" variant="outline" disabled={!canManageTravelers} onClick={() => void saveCustomerTraveler(selectedOrder)}>
+                        Save & add
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2 text-xs" disabled={!canManageTravelers} onClick={() => setShowAddTraveler((current) => ({ ...current, [selectedOrder._id]: true }))}>
+                      + New traveler
+                    </Button>
+                  )}
+                  <div className="mt-2 text-xs text-slate-500">A traveler is required before accounting handoff.</div>
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-slate-800">Supplier fulfillment</div>
-                    <div className="text-xs text-slate-500">{selectedFulfillment.length} task{selectedFulfillment.length === 1 ? "" : "s"}</div>
+                    <div className="text-sm font-semibold text-slate-800">Supplier bookings</div>
                   </div>
                   {selectedFulfillment.length === 0 ? (
                     <div className="mt-2 text-sm text-slate-500">No supplier tasks yet.</div>
                   ) : (
                     <div className="mt-3 space-y-2">
                       {selectedFulfillment.map((item) => (
-                        <div key={item._id} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                        <div id={`fulfillment-${item._id}`} key={item._id} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="font-medium text-slate-800">{item.supplierName || "Supplier"}</div>
                               <div className="text-xs text-slate-500">
-                                {item.serviceType || "Travel service"}
                                 {item.orderItemId
-                                  ? ` · ${String((selectedOrder.items || []).find((orderItem) => String(orderItem._id || "") === item.orderItemId)?.description || "Linked service")}`
-                                  : " · not linked to an order service"}
-                                {item.supplierReference ? ` · ${item.supplierReference}` : ""}
+                                  ? String((selectedOrder.items || []).find((orderItem) => String(orderItem._id || "") === item.orderItemId)?.description || "Linked service")
+                                  : "Not linked to an order service"}
+                                {item.supplierReference ? ` · Booking ${item.supplierReference}` : item.orderItemId ? " · Booking reference needed" : ""}
+                                {item.hotelConfirmationNumber ? ` · Hotel confirmation ${item.hotelConfirmationNumber}` : ""}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1516,57 +1468,73 @@ export default function OrdersWorkspace() {
                                 variant="outline"
                                 size="sm"
                                 disabled={actionSaving || item.status === "cancelled"}
-                                onClick={() => {
-                                  setFulfillmentDrafts((drafts) => ({
-                                    ...drafts,
-                                    [item._id]: {
-                                      orderItemId: item.orderItemId || "",
-                                      supplierName: item.supplierName || "",
-                                      supplierReference: item.supplierReference || "",
-                                      supplierInvoiceReference: item.supplierInvoiceReference || "",
-                                      supplierInvoiceAmount: item.supplierInvoiceAmount === undefined ? "" : String(item.supplierInvoiceAmount),
-                                      supplierInvoiceDueAt: item.supplierInvoiceDueAt ? item.supplierInvoiceDueAt.slice(0, 10) : "",
-                                      serviceType: item.serviceType || "other",
-                                      notes: item.notes || "",
-                                    },
-                                  }));
-                                  setEditingFulfillmentId(item._id);
-                                }}
+                                onClick={() => beginFulfillmentEdit(item)}
                               >Edit</Button>
                             </div>
                           </div>
                           {editingFulfillmentId === item._id && (
                             <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {!item.orderItemId ? (
+                              <>
                               <select
                                 value={fulfillmentDrafts[item._id]?.orderItemId || ""}
                                 disabled={actionSaving}
                                 onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], orderItemId: event.target.value } }))}
                                 className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
                               >
-                                <option value="">No linked order service</option>
+                                <option value="">Choose order service</option>
                                 {(selectedOrder.items || []).map((orderItem, orderItemIndex) => {
                                   const orderItemId = String(orderItem._id || "");
-                                  const otherFulfillmentUsesItem = selectedFulfillment.some((other) => other._id !== item._id && other.status !== "cancelled" && other.orderItemId === orderItemId);
-                                  return <option key={orderItemId || orderItemIndex} value={orderItemId} disabled={!orderItemId || otherFulfillmentUsesItem}>{String(orderItem.description || `Service ${orderItemIndex + 1}`)}{otherFulfillmentUsesItem ? " · linked" : ""}</option>;
+                                  const otherFulfillment = selectedFulfillment.find((other) => other._id !== item._id && other.status !== "cancelled" && String(other.orderItemId || "") === orderItemId);
+                                  const description = String(orderItem.description || `Service ${orderItemIndex + 1}`);
+                                  return <option key={orderItemId || orderItemIndex} value={orderItemId} disabled={!orderItemId || Boolean(otherFulfillment)}>{description}{otherFulfillment ? ` · already assigned to ${otherFulfillment.supplierName || "another supplier task"}` : ""}</option>;
                                 })}
                               </select>
-                              <Input value={fulfillmentDrafts[item._id]?.supplierName || ""} placeholder="Supplier" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierName: event.target.value } }))} />
-                              <Input value={fulfillmentDrafts[item._id]?.supplierReference || ""} placeholder="Booking reference" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierReference: event.target.value } }))} />
-                              <Input value={fulfillmentDrafts[item._id]?.serviceType || "other"} placeholder="Service type" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], serviceType: event.target.value } }))} />
-                              <Input value={fulfillmentDrafts[item._id]?.notes || ""} placeholder="Notes" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], notes: event.target.value } }))} />
-                              <Input value={fulfillmentDrafts[item._id]?.supplierInvoiceReference || ""} placeholder="Supplier invoice reference" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceReference: event.target.value } }))} />
-                              <Input type="number" min="0" step="0.01" value={fulfillmentDrafts[item._id]?.supplierInvoiceAmount || ""} placeholder={`Invoice cost before tax (${selectedOrder.currency})`} className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceAmount: event.target.value } }))} />
+                              {selectedFulfillment.some((other) => other._id !== item._id && other.status !== "cancelled" && other.orderItemId) && (
+                                <div className="sm:col-span-2 rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+                                  This service is already assigned to another supplier task. Edit that task to update its supplier details.
+                                  <div className="mt-1.5 flex flex-wrap gap-2">
+                                    {selectedFulfillment.filter((other) => other._id !== item._id && other.status !== "cancelled" && other.orderItemId).map((other) => {
+                                      const linkedService = (selectedOrder.items || []).find((orderItem) => String(orderItem._id || "") === String(other.orderItemId || ""));
+                                      return (
+                                        <Button key={other._id} type="button" variant="outline" size="sm" disabled={actionSaving || other.status === "cancelled"} onClick={() => beginFulfillmentEdit(other)}>
+                                          Edit {String(linkedService?.description || "linked service")} · {other.supplierName || "Supplier task"}
+                                        </Button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              </>
+                              ) : (
+                                <div className="sm:col-span-2 rounded-md bg-slate-100 px-2.5 py-2 text-xs text-slate-600">
+                                  Service: {String((selectedOrder.items || []).find((orderItem) => String(orderItem._id || "") === item.orderItemId)?.description || "Linked service")}
+                                </div>
+                              )}
+                              <Input value={fulfillmentDrafts[item._id]?.supplierName || ""} placeholder="Supplier name" aria-label="Supplier name" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierName: event.target.value } }))} />
+                              <Input value={fulfillmentDrafts[item._id]?.supplierReference || ""} placeholder="Supplier confirmation / booking reference" aria-label="Supplier confirmation or booking reference" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierReference: event.target.value } }))} />
+                              <Input value={fulfillmentDrafts[item._id]?.hotelConfirmationNumber || ""} placeholder="Hotel confirmation number (optional)" aria-label="Hotel confirmation number" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], hotelConfirmationNumber: event.target.value } }))} />
+                              <Input value={fulfillmentDrafts[item._id]?.supplierInvoiceReference || ""} placeholder="Supplier invoice reference" aria-label="Supplier invoice reference" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceReference: event.target.value } }))} />
+                              <Input type="number" min="0" step="0.01" value={fulfillmentDrafts[item._id]?.supplierInvoiceAmount || ""} placeholder={`Actual supplier cost (${selectedOrder.currency})`} aria-label={`Actual supplier cost in ${selectedOrder.currency}`} className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceAmount: event.target.value } }))} />
                               <Input type="date" value={fulfillmentDrafts[item._id]?.supplierInvoiceDueAt || ""} aria-label="Supplier invoice due date" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceDueAt: event.target.value } }))} />
+                              <div className="sm:col-span-2 rounded-md border border-slate-200 bg-white p-2">
+                                <div className="mb-1 text-xs font-medium text-slate-600">Supplier invoice attachment</div>
+                                <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx" aria-label="Attach supplier invoice" className="h-9 text-xs" disabled={actionSaving || (!canWorkflow("operations") && !canWorkflow("accounting"))} onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (file) void uploadSupplierInvoice(selectedOrder._id, item._id, file);
+                                  event.target.value = "";
+                                }} />
+                                {!!item.supplierInvoiceAttachments?.length && <div className="mt-2 space-y-1">{item.supplierInvoiceAttachments.map((attachment, index) => <a key={attachment._id || `${item._id}-invoice-${index}`} href={orderAttachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="block text-xs text-blue-700 underline">{attachment.name}</a>)}</div>}
+                              </div>
                               <div className="flex gap-2 sm:col-span-2">
                                 <Button type="button" size="sm" disabled={actionSaving} onClick={() => void saveFulfillmentDetails(selectedOrder._id, item._id)}>Save details</Button>
                                 <Button type="button" variant="outline" size="sm" disabled={actionSaving} onClick={() => setEditingFulfillmentId(null)}>Discard</Button>
                               </div>
                             </div>
                           )}
-                          {item.orderItemId && (
+                          {item.orderItemId && (item.supplierInvoiceReference || item.supplierInvoiceAmount !== undefined) && (
                             <div className="mt-2 text-xs text-slate-500">
-                              Service: {String(selectedOrder.items?.find((orderItem) => String(orderItem._id || "") === item.orderItemId)?.description || "Linked order service")}
-                              {item.supplierInvoiceReference ? ` · Invoice ${item.supplierInvoiceReference}` : ""}
+                              {item.supplierInvoiceReference ? `Invoice ${item.supplierInvoiceReference}` : ""}
                               {item.supplierInvoiceAmount !== undefined ? ` · Actual cost before tax ${Number(item.supplierInvoiceAmount).toFixed(2)} ${selectedOrder.currency}` : ""}
                             </div>
                           )}
@@ -1625,22 +1593,6 @@ export default function OrdersWorkspace() {
                               </div>
                             );
                           })()}
-                          {item.notes && editingFulfillmentId !== item._id && <div className="mt-2 text-xs text-slate-500">{item.notes}</div>}
-                          {!!item.history?.length && (
-                            <div className="mt-2 border-t border-slate-200 pt-2">
-                              <div className="mb-1 text-[11px] font-medium text-slate-500">Recent changes</div>
-                              <div className="space-y-1">
-                                {item.history.slice(-3).reverse().map((change, index) => (
-                                  <div key={`${item._id}-history-${index}`} className="text-[11px] text-slate-500">
-                                    <span className="font-medium text-slate-600">{change.field}</span>: {change.from || "empty"} → {change.to || "empty"}
-                                    <span> · {new Date(change.changedAt).toLocaleString()}</span>
-                                    {change.changedBy && <span> · by {change.changedBy.slice(0, 8)}</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {item.tasks && item.tasks.length > 0 && <div className="mt-2 space-y-1.5"><div className="text-xs text-slate-500">{item.tasks.filter((task) => task.status === "done").length}/{item.tasks.length} tasks complete</div>{item.tasks.map((task, taskIndex) => <div key={`${item._id}-task-${taskIndex}`} className="flex items-center justify-between gap-2 text-xs"><span className={task.status === "done" ? "text-emerald-700 line-through" : "text-slate-600"}>{task.title}</span><select value={task.status} disabled={actionSaving} onChange={(event) => void updateFulfillmentTask(selectedOrder._id, item, taskIndex, event.target.value)} className="h-7 rounded border border-slate-200 bg-white px-1 text-[11px] text-slate-600"><option value="pending">Pending</option><option value="in_progress">In progress</option><option value="done">Done</option><option value="blocked">Blocked</option></select></div>)}</div>}
                         </div>
                       ))}
                     </div>

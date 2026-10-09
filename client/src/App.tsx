@@ -14,9 +14,9 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import BoardView from "./pages/BoardView";
-import OrdersWorkspace from "./pages/OrdersWorkspace";
 import HotelQuoteTool from "./pages/HotelQuoteTool";
 import TicketsInbox from "./pages/TicketsInbox";
+import OrdersWorkspace from "./pages/OrdersWorkspace";
 import WorkspaceFeaturePage from "./pages/WorkspaceFeaturePage";
 
 function Router() {

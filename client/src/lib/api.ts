@@ -71,18 +71,6 @@ export type CustomerProfile = {
   updatedAt: string;
 };
 
-export type TravelerRecord = {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  displayNameArabic?: string;
-  email?: string;
-  phone?: string;
-  nationality?: string;
-  dateOfBirth?: string;
-  relationship?: string;
-};
-
 export type SupplierType = "DMC" | "Hotel" | "Flight supplier" | "Online portal" | "Tour operator" | "Transfer company" | "Local supplier" | "Other";
 export type Supplier = {
   _id: string; name: string; type: SupplierType; status: "Active" | "Inactive" | "Preferred";
@@ -239,30 +227,14 @@ async function tryCustomerApi<T>(request: () => Promise<Response>, fallback: () 
 }
 
 export const customerApi = {
-  getAll: async (boardId?: string) => {
+  getAll: async () => {
     return tryCustomerApi<CustomerProfile[]>(
       () =>
-        fetch(`${API_URL}/api/customers${boardId ? `?boardId=${encodeURIComponent(boardId)}` : ""}`, {
+        fetch(`${API_URL}/api/customers`, {
           headers: getAuthHeaders(),
         }),
       () => readLocalCustomers()
     );
-  },
-
-  getTravelers: async (customerId: string) => {
-    const response = await fetch(`${API_URL}/api/customers/${encodeURIComponent(customerId)}/travelers`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<TravelerRecord[]>(response);
-  },
-
-  addTraveler: async (customerId: string, data: Partial<TravelerRecord> & { firstName: string; lastName: string }) => {
-    const response = await fetch(`${API_URL}/api/customers/${encodeURIComponent(customerId)}/travelers`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-    return handleResponse<TravelerRecord>(response);
   },
 
   create: async (data: CustomerCreateData) => {
@@ -1230,7 +1202,6 @@ export type AdminUserRecord = {
   username: string;
   email: string;
   role: GlobalUserRole;
-  workflowRoles: Array<"sales" | "operations" | "accounting">;
   canViewAllAnalytics: boolean;
   emailVerified?: boolean;
   createdAt?: string;
@@ -1243,7 +1214,6 @@ function normalizeAdminUserRecord(input: any): AdminUserRecord {
     username: String(input?.username || "Unknown"),
     email: String(input?.email || ""),
     role: String(input?.role || "user").toLowerCase() === "admin" ? "admin" : "user",
-    workflowRoles: Array.isArray(input?.workflowRoles) ? input.workflowRoles.filter((role: string) => ["sales", "operations", "accounting"].includes(role)) : ["sales", "operations", "accounting"],
     canViewAllAnalytics: Boolean(input?.canViewAllAnalytics),
     emailVerified: typeof input?.emailVerified === "boolean" ? input.emailVerified : undefined,
     createdAt: typeof input?.createdAt === "string" ? input.createdAt : undefined,
@@ -1451,16 +1421,6 @@ export const adminUserApi = {
     const raw = await handleResponse<any>(response);
     return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
   },
-
-  setWorkflowRoles: async (userId: string, workflowRoles: Array<"sales" | "operations" | "accounting">) => {
-    const response = await fetch(`${API_URL}/api/users/admin/${encodeURIComponent(userId)}/workflow-roles`, {
-      method: "PATCH",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ workflowRoles }),
-    });
-    const raw = await handleResponse<any>(response);
-    return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
-  },
 };
 
 export const adminTicketsApi = {
@@ -1640,7 +1600,7 @@ export type CardCreateData = {
   followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
   followUpNote?: string;
   followUpCompleted?: boolean;
-  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Accounting received" | "Paid" | "Closed";
+  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Paid" | "Closed";
   accountingReference?: string;
   accountingNotes?: string;
   type?: string;
@@ -1765,7 +1725,6 @@ export type QuotationLine = {
   _id?: string;
   serviceType: "Flight" | "Hotel" | "Tour" | "Transfer" | "Other";
   description: string;
-  supplierName?: string;
   quantity: number;
   netRate: number;
   sellingRate: number;
@@ -1967,19 +1926,6 @@ export type Card = {
   coveringStatus?: "Requested" | "Paid by VCC" | "Invoiced to agency";
   netPaidToHotel?: number;
   sellToAgency?: number;
-  salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
-  qualificationStatus?: "Unqualified" | "Qualified" | "Not a fit";
-  leadNeed?: string;
-  leadBudget?: number;
-  travelDates?: string;
-  lossReason?: string;
-  followUpAt?: string | null;
-  followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
-  followUpNote?: string;
-  followUpCompleted?: boolean;
-  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Accounting received" | "Paid" | "Closed";
-  accountingReference?: string;
-  accountingNotes?: string;
   type?: string;
   status?: string;
   priority?: string;
@@ -2040,19 +1986,6 @@ export type CardUpdateData = {
   coveringStatus?: "Requested" | "Paid by VCC" | "Invoiced to agency";
   netPaidToHotel?: number;
   sellToAgency?: number;
-  salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
-  qualificationStatus?: "Unqualified" | "Qualified" | "Not a fit";
-  leadNeed?: string;
-  leadBudget?: number;
-  travelDates?: string;
-  lossReason?: string;
-  followUpAt?: string | null;
-  followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
-  followUpNote?: string;
-  followUpCompleted?: boolean;
-  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Accounting received" | "Paid" | "Closed";
-  accountingReference?: string;
-  accountingNotes?: string;
   type?: string;
   status?: string;
   priority?: string;

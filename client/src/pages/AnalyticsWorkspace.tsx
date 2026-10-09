@@ -254,6 +254,7 @@ export default function AnalyticsWorkspace() {
   const teams = data?.teams ?? [];
   const totals = data?.summary ?? { opened: 0, resolved: 0, sla: 0, backlog: 0, firstResponse: 0 };
   const reports = data?.reports ?? { operations: [], service: [], efficiency: [] };
+  const salesFunnel = data?.salesFunnel ?? { stageCounts: [], averageNewToWonHours: null, conversionTimeSampleSize: 0, lossReasons: [] };
   const isEmpty = !isLoading && !error && trend.length === 0 && teams.length === 0;
   const activeFilterCount = getActiveFilterCount(filters);
 
@@ -656,6 +657,48 @@ export default function AnalyticsWorkspace() {
                       <Bar dataKey="breached" fill="var(--color-breached)" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ChartContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {!isLoading && !isEmpty && (
+              <Card className="bg-white/90 text-slate-900 dark:bg-slate-900/90 dark:text-slate-100">
+                <CardHeader className="pb-2">
+                  <CardTitle>Sales Funnel</CardTitle>
+                  <CardDescription>Lead counts by current stage across boards you can access.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+                  <div className="space-y-3">
+                    {salesFunnel.stageCounts.map((row) => {
+                      const maxCount = Math.max(1, ...salesFunnel.stageCounts.map((stage) => stage.count));
+                      return (
+                        <div key={row.stage} className="grid grid-cols-[6rem_1fr_2rem] items-center gap-3 text-sm">
+                          <span className="text-slate-600 dark:text-slate-300">{row.stage}</span>
+                          <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                            <div className="h-full rounded-full bg-orange-600" style={{ width: `${(row.count / maxCount) * 100}%` }} />
+                          </div>
+                          <span className="text-right font-medium">{row.count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="space-y-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-800/50">
+                    <div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">Average New to Won</div>
+                      <div className="mt-1 text-2xl font-semibold">
+                        {salesFunnel.averageNewToWonHours == null ? "—" : `${salesFunnel.averageNewToWonHours}h`}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">Based on {salesFunnel.conversionTimeSampleSize} leads with recorded stage history</div>
+                    </div>
+                    <div>
+                      <div className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">Lost lead reasons</div>
+                      {salesFunnel.lossReasons.length ? salesFunnel.lossReasons.slice(0, 5).map((row) => (
+                        <div key={row.reason} className="flex justify-between gap-3 py-1 text-sm">
+                          <span className="truncate">{row.reason}</span><span className="font-medium">{row.count}</span>
+                        </div>
+                      )) : <div className="text-sm text-slate-500 dark:text-slate-400">No lost leads recorded.</div>}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}

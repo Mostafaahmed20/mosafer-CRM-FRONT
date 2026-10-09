@@ -29,7 +29,7 @@ export default function Login() {
     try {
       await login(email, password);
       toast.success("Welcome back!");
-      navigate("/dashboard");
+      navigate("/tickets");
     } catch (error) {
       if (isAuthApiError(error)) {
         if (error.code === "USE_GOOGLE_LOGIN") {
@@ -71,7 +71,7 @@ export default function Login() {
           try {
             await loginWithGoogle(resp.credential);
             toast.success("Welcome!");
-            navigate("/dashboard");
+            navigate("/tickets");
           } catch (error) {
             toast.error(error instanceof Error ? error.message : "Google login failed");
           }

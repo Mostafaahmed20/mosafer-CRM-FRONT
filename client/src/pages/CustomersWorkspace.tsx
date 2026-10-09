@@ -11,7 +11,6 @@ import {
   CustomerProfile,
   CustomerTag,
   customerApi,
-  TravelerRecord,
 } from "@/lib/api";
 import { getAppSettings } from "@/lib/appSettings";
 import { useAuth } from "@/contexts/AuthContext";
@@ -91,10 +90,6 @@ export default function CustomersWorkspace() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [contactDraft, setContactDraft] = useState<ContactDraft>(EMPTY_CONTACT_DRAFT);
-  const [travelersByCustomer, setTravelersByCustomer] = useState<Record<string, TravelerRecord[]>>({});
-  const [expandedTravelerCustomerId, setExpandedTravelerCustomerId] = useState<string | null>(null);
-  const [travelerDraft, setTravelerDraft] = useState({ firstName: "", lastName: "", displayNameArabic: "", email: "", phone: "", nationality: "" });
-  const [savingTraveler, setSavingTraveler] = useState(false);
 
   const isAdminUser = String((user as any)?.role || "").toLowerCase() === "admin";
   const customerRules = getAppSettings().customerRules;
@@ -116,41 +111,6 @@ export default function CustomersWorkspace() {
       toast.error(error?.message || "Failed to load customers");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const toggleCustomerTravelers = async (customer: CustomerProfile) => {
-    if (expandedTravelerCustomerId === customer._id) {
-      setExpandedTravelerCustomerId(null);
-      return;
-    }
-    setExpandedTravelerCustomerId(customer._id);
-    try {
-      const travelers = await customerApi.getTravelers(customer._id);
-      setTravelersByCustomer((previous) => ({ ...previous, [customer._id]: travelers }));
-    } catch (error: any) {
-      toast.error(error?.message || "Could not load travelers");
-    }
-  };
-
-  const saveTraveler = async (customer: CustomerProfile) => {
-    if (!travelerDraft.firstName.trim() || !travelerDraft.lastName.trim()) {
-      toast.error("First and last name are required");
-      return;
-    }
-    try {
-      setSavingTraveler(true);
-      const traveler = await customerApi.addTraveler(customer._id, travelerDraft);
-      setTravelersByCustomer((previous) => ({
-        ...previous,
-        [customer._id]: [traveler, ...(previous[customer._id] || [])],
-      }));
-      setTravelerDraft({ firstName: "", lastName: "", displayNameArabic: "", email: "", phone: "", nationality: "" });
-      toast.success("Traveler saved to customer profile");
-    } catch (error: any) {
-      toast.error(error?.message || "Could not save traveler");
-    } finally {
-      setSavingTraveler(false);
     }
   };
 
@@ -505,7 +465,7 @@ export default function CustomersWorkspace() {
               </p>
             </form>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                   <div className="font-semibold">Saved Agency Profiles</div>
@@ -590,15 +550,6 @@ export default function CustomersWorkspace() {
                             type="button"
                             size="sm"
                             variant="ghost"
-                            onClick={() => void toggleCustomerTravelers(customer)}
-                          >
-                            <Users className="mr-1 h-4 w-4" />
-                            Travelers
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
                             onClick={() => startEdit(customer)}
                             disabled={customerRules.adminOnlyEdit && !isAdminUser}
                             title={customerRules.adminOnlyEdit && !isAdminUser ? "Admin only" : "Edit agency profile"}
@@ -618,38 +569,6 @@ export default function CustomersWorkspace() {
                           </Button>
                         </div>
                       </div>
-                      {expandedTravelerCustomerId === customer._id && (
-                        <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-                          <div className="mb-3 text-sm font-semibold">Travelers linked to {customer.agencyName}</div>
-                          <div className="mb-4 flex flex-wrap gap-2">
-                            {(travelersByCustomer[customer._id] || []).map((traveler) => (
-                              <div key={traveler._id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800">
-                                <div className="font-medium">{traveler.firstName} {traveler.lastName}</div>
-                                {(traveler.displayNameArabic || traveler.nationality) && (
-                                  <div className="text-slate-500 dark:text-slate-400">
-                                    {[traveler.displayNameArabic, traveler.nationality].filter(Boolean).join(" · ")}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            {!(travelersByCustomer[customer._id] || []).length && (
-                              <div className="text-xs text-slate-500">No travelers linked yet.</div>
-                            )}
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                            <Input placeholder="First name" value={travelerDraft.firstName} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, firstName: event.target.value }))} />
-                            <Input placeholder="Last name" value={travelerDraft.lastName} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, lastName: event.target.value }))} />
-                            <Input placeholder="Arabic display name" value={travelerDraft.displayNameArabic} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, displayNameArabic: event.target.value }))} />
-                            <Input placeholder="Email" type="email" value={travelerDraft.email} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, email: event.target.value }))} />
-                            <Input placeholder="Phone" value={travelerDraft.phone} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, phone: event.target.value }))} />
-                            <Input placeholder="Nationality" value={travelerDraft.nationality} onChange={(event) => setTravelerDraft((draft) => ({ ...draft, nationality: event.target.value }))} />
-                          </div>
-                          <Button type="button" size="sm" className="mt-3" onClick={() => void saveTraveler(customer)} disabled={savingTraveler}>
-                            {savingTraveler ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                            Add traveler
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>

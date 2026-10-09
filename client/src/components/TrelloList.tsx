@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { List, Card, BoardRole, CardCreateData, canEditList, canDeleteList, canCreateCard, canDragCards } from "@/lib/api";
+import { List, Card, BoardRole, CardCreateData, CustomerProfile, customerApi, canEditList, canDeleteList, canCreateCard, canDragCards } from "@/lib/api";
 import { TrelloCard } from "./TrelloCard";
 import {
   Plus,
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface TrelloListProps {
+  boardId: string;
   list: List;
   onAddCard: (payload: CardCreateData) => Promise<void>;
   onDeleteList: () => Promise<void>;
@@ -38,6 +39,7 @@ interface TrelloListProps {
 }
 
 export function TrelloList({
+  boardId,
   list,
   onAddCard,
   onDeleteList,
@@ -51,9 +53,12 @@ export function TrelloList({
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
   const [requestTitle, setRequestTitle] = useState("");
   const [requestAgency, setRequestAgency] = useState("");
+  const [requestCustomerId, setRequestCustomerId] = useState("");
+  const [requestPhone, setRequestPhone] = useState("");
+  const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
   const [requestDestination, setRequestDestination] = useState("");
   const [requestTravelers, setRequestTravelers] = useState("");
-  const [requestServices, setRequestServices] = useState<("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[]>([]);
+  const [requestServices, setRequestServices] = useState<("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[]>([]);
   const [requestSource, setRequestSource] = useState("Email");
   const [requestType, setRequestType] = useState("Booking request");
   const [requestCheckIn, setRequestCheckIn] = useState("");
@@ -61,6 +66,15 @@ export function TrelloList({
   const [isCreatingRequest, setIsCreatingRequest] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(list.title);
+
+  useEffect(() => {
+    if (!isIntakeOpen) return;
+    let active = true;
+    customerApi.getAll(boardId)
+      .then((profiles) => { if (active) setCustomerProfiles(profiles); })
+      .catch(() => { if (active) setCustomerProfiles([]); });
+    return () => { active = false; };
+  }, [boardId, isIntakeOpen]);
 
   const {
     attributes,
@@ -80,6 +94,8 @@ export function TrelloList({
   const resetIntake = () => {
     setRequestTitle("");
     setRequestAgency("");
+    setRequestCustomerId("");
+    setRequestPhone("");
     setRequestDestination("");
     setRequestTravelers("");
     setRequestServices([]);
@@ -97,6 +113,8 @@ export function TrelloList({
       await onAddCard({
         title: requestTitle.trim(),
         agencyName: requestAgency.trim(),
+        customerProfileId: requestCustomerId && !requestCustomerId.startsWith("local_") ? requestCustomerId : undefined,
+        customerPhone: requestPhone.trim(),
         destination: requestDestination.trim(),
         travelerCount: requestTravelers ? Number(requestTravelers) : 0,
         travelServices: requestServices,
@@ -136,7 +154,7 @@ export function TrelloList({
     });
   };
 
-  const toggleService = (service: "Flight" | "Hotel" | "Tour" | "Transfer" | "Other") => {
+  const toggleService = (service: "Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other") => {
     setRequestServices((current) =>
       current.includes(service) ? current.filter((item) => item !== service) : [...current, service]
     );
@@ -288,8 +306,32 @@ export function TrelloList({
                     </label>
                     <Input
                       value={requestAgency}
-                      onChange={(e) => setRequestAgency(e.target.value)}
+                      list={`customer-profiles-${list._id}`}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const match = customerProfiles.find((profile) =>
+                          String(profile.customerName || profile.agencyName).trim().toLowerCase() === value.trim().toLowerCase()
+                        );
+                        setRequestAgency(value);
+                        setRequestCustomerId(match?._id || "");
+                        setRequestPhone(match?.phone || "");
+                      }}
                       placeholder="Choose or enter the requesting company"
+                      className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                    />
+                    <datalist id={`customer-profiles-${list._id}`}>
+                      {customerProfiles.map((profile) => (
+                        <option key={profile._id} value={profile.customerName || profile.agencyName}>
+                          {profile.phone ? `Phone: ${profile.phone}` : "Saved customer profile"}
+                        </option>
+                      ))}
+                    </datalist>
+                    <Input
+                      type="tel"
+                      value={requestPhone}
+                      onChange={(e) => setRequestPhone(e.target.value)}
+                      placeholder="Customer phone number"
+                      aria-label="Customer phone number"
                       className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
                     />
                   </div>
@@ -338,7 +380,7 @@ export function TrelloList({
                       Requested services
                     </label>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {(["Flight", "Hotel", "Tour", "Transfer", "Other"] as const).map((service) => {
+                      {(["Flight", "Hotel", "Tour", "Transfer", "Package", "Other"] as const).map((service) => {
                         const selected = requestServices.includes(service);
                         return (
                           <button
@@ -464,8 +506,9 @@ export function TrelloList({
                   <div className="text-sm font-medium text-[#102A43]">
                     {requestAgency.trim() || "No company selected yet"}
                   </div>
+                  {requestPhone.trim() && <div className="mt-1 text-xs text-[#486581]">{requestPhone}</div>}
                   <div className="mt-2 text-xs text-[#6B7C93]">
-                    This company will be attached to the request intake record.
+                    Saved customer details fill the name and phone automatically.
                   </div>
                 </div>
 

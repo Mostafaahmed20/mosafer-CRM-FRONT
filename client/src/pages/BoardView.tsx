@@ -137,7 +137,6 @@ export default function BoardView() {
   const [mentionQuery, setMentionQuery] = useState("");
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
-  const dragSourceListIdRef = useRef<string | null>(null);
 
   // Get current user's role on this board
   const getUserRole = (): BoardRole | undefined => {
@@ -906,7 +905,6 @@ export default function BoardView() {
       l.cards.some((c) => c._id === active.id)
     );
     if (activeList) {
-      dragSourceListIdRef.current = activeList._id;
       const card = activeList.cards.find((c) => c._id === active.id);
       setActiveCard(card || null);
     }
@@ -967,15 +965,10 @@ export default function BoardView() {
     setActiveCard(null);
     setOverListId(null);
 
-    if (!over || !boardId) {
-      dragSourceListIdRef.current = null;
-      return;
-    }
+    if (!over || !boardId) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
-    const sourceListId = dragSourceListIdRef.current;
-    dragSourceListIdRef.current = null;
 
     // Check if dragging a list
     const activeListIndex = lists.findIndex((l) => l._id === activeId);
@@ -999,9 +992,9 @@ export default function BoardView() {
     }
 
     // Otherwise handle card movement
-    const activeList = sourceListId
-      ? lists.find((l) => l._id === sourceListId)
-      : lists.find((l) => l.cards.some((c) => c._id === activeId));
+    const activeList = lists.find((l) =>
+      l.cards.some((c) => c._id === activeId)
+    );
 
     if (!activeList) return;
 
@@ -1036,16 +1029,12 @@ export default function BoardView() {
       }
     } else {
       // Move to different list
-      const targetCards = overList.cards.filter((c) => c._id !== activeId);
-      const targetIndex = targetCards.findIndex((c) => c._id === overId);
-      const newPosition = overId === overList._id
-        ? targetCards.length
-        : targetIndex;
+      const newPosition = overList.cards.findIndex((c) => c._id === overId);
 
       try {
         await cardApi.reorder(boardId, activeList._id, {
           cardId: activeId,
-          newPosition: newPosition >= 0 ? newPosition : targetCards.length,
+          newPosition: newPosition >= 0 ? newPosition : overList.cards.length,
           newListId: overList._id,
         });
       } catch (error) {
@@ -1053,12 +1042,6 @@ export default function BoardView() {
         fetchBoard();
       }
     }
-  };
-
-  const handleDragCancel = () => {
-    dragSourceListIdRef.current = null;
-    setActiveCard(null);
-    setOverListId(null);
   };
 
   const getBackgroundColor = () => {
@@ -1765,7 +1748,6 @@ export default function BoardView() {
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
         >
           <div className="flex h-full items-start gap-4">
             <SortableContext

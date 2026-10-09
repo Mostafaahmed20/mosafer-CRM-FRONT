@@ -14,6 +14,7 @@ import SearchWorkspace from "./SearchWorkspace";
 import SettingsWorkspace from "./SettingsWorkspace";
 import SupportWorkspace from "./SupportWorkspace";
 import SuppliersWorkspace from "./SuppliersWorkspace";
+import OrdersWorkspace from "./OrdersWorkspace";
 
 const AnalyticsWorkspace = lazy(() => import("./AnalyticsWorkspace"));
 const AuditWorkspace = lazy(() => import("./AuditWorkspace"));
@@ -194,6 +195,7 @@ export default function WorkspaceFeaturePage() {
   if (feature === "customers") {
     return <CustomersWorkspace />;
   }
+  if (feature === "orders") return <OrdersWorkspace />;
   if (feature === "suppliers") return <SuppliersWorkspace />;
 
   if (feature === "daily-ops") {

@@ -41,16 +41,22 @@ interface TicketItem {
   list: List;
 }
 
-type OpsView =
-  | "all"
-  | "today-arrivals"
-  | "arrivals-next-3-days"
-  | "pending-supplier-confirmation"
-  | "pending-hotel-confirmation"
-  | "in-house";
-
-type SavedView = "none" | "my-queue" | "today-arrivals" | "pending-confirmations";
+type PipelineView = "all" | "mine" | "leads" | "working" | "won" | "accounting";
 type ComposerMode = "reply" | "note";
+
+const ACCOUNTING_READY = new Set(["Ready for accounting", "Sent to accounting", "Paid", "Closed"]);
+const LEAD_STAGES = new Set(["New", "Contacted"]);
+const WORKING_STAGES = new Set(["Qualified", "Quoted", "Follow-up"]);
+
+function getCaseStage(card: Card): PipelineView {
+  const accounting = String(card.accountingStatus || "Not ready");
+  const sales = String(card.salesStage || "New");
+  if (ACCOUNTING_READY.has(accounting)) return "accounting";
+  if (sales === "Won") return "won";
+  if (WORKING_STAGES.has(sales)) return "working";
+  if (LEAD_STAGES.has(sales)) return "leads";
+  return "working";
+}
 
 const PRIORITY_OPTIONS = ["Urgent", "High", "Medium", "Low"];
 const CLOSED_STATUS_SET = new Set(["closed", "completed", "cancelled"]);
@@ -125,7 +131,7 @@ const getPriorityPill = (priority?: string) => {
 };
 
 export default function TicketsInbox() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [boardCatalog, setBoardCatalog] = useState<BoardCatalogItem[]>([]);
@@ -134,9 +140,10 @@ export default function TicketsInbox() {
   const [boardFilter, setBoardFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [opsView, setOpsView] = useState<OpsView>("all");
-  const [savedView, setSavedView] = useState<SavedView>("none");
-  const [sortBy, setSortBy] = useState<"created-desc" | "created-asc" | "arrival-asc" | "due-asc">("created-desc");
+  const pipelineView: PipelineView = new URLSearchParams(location.split("?")[1] || "").get("view") === "accounting"
+    ? "accounting"
+    : ((new URLSearchParams(location.split("?")[1] || "").get("view") as PipelineView) || "all");
+  const [sortBy, setSortBy] = useState<"created-desc" | "created-asc" | "due-asc">("created-desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignMemberUserId, setAssignMemberUserId] = useState("");
   const [assignAgentUserId, setAssignAgentUserId] = useState("");
@@ -239,38 +246,20 @@ export default function TicketsInbox() {
         ticket.card.agent?._id === user?._id ||
         ticket.card.members?.some((member) => member._id === user?._id);
 
-      const today = new Date();
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const in3Days = new Date(todayStart);
-      in3Days.setDate(todayStart.getDate() + 3);
-      const arrival = toDateOnly(ticket.card.arrivalDate || ticket.card.checkInDate || ticket.card.dueDate);
-
-      const matchesOpsView = (() => {
-        if (opsView === "all") return true;
-        if (opsView === "today-arrivals") return !!arrival && isSameDay(arrival, todayStart);
-        if (opsView === "arrivals-next-3-days") return !!arrival && arrival >= todayStart && arrival <= in3Days;
-        if (opsView === "pending-supplier-confirmation") {
-          return (ticket.card.status === "Confirmed" || ticket.card.status === "Reconfirmed") &&
-            !ticket.card.supplierConfirmationNumber;
-        }
-        if (opsView === "pending-hotel-confirmation") {
-          return (ticket.card.status === "Confirmed" || ticket.card.status === "Reconfirmed") &&
-            !ticket.card.hotelConfirmationNumber;
-        }
-        return ticket.card.status === "In-house";
-      })();
-
-      const matchesSavedView = (() => {
-        if (savedView === "none") return true;
-        if (savedView === "my-queue") {
+      const sales = String(ticket.card.salesStage || "New");
+      const accounting = String(ticket.card.accountingStatus || "Not ready");
+      const matchesPipeline = (() => {
+        if (pipelineView === "all") return true;
+        if (pipelineView === "mine") {
           return ticket.card.agent?._id === user?._id || ticket.card.members?.some((member) => member._id === user?._id);
         }
-        if (savedView === "today-arrivals") return !!arrival && isSameDay(arrival, todayStart);
-        const eligible = ticket.card.status === "Confirmed" || ticket.card.status === "Reconfirmed";
-        return eligible && (!ticket.card.supplierConfirmationNumber || !ticket.card.hotelConfirmationNumber);
+        if (pipelineView === "leads") return LEAD_STAGES.has(sales) && sales !== "Won" && sales !== "Lost" && !ACCOUNTING_READY.has(accounting);
+        if (pipelineView === "working") return WORKING_STAGES.has(sales) || (!LEAD_STAGES.has(sales) && sales !== "Won" && sales !== "Lost" && !ACCOUNTING_READY.has(accounting));
+        if (pipelineView === "won") return sales === "Won" || ticket.card.status === "Closed" || ticket.card.status === "Completed";
+        return ACCOUNTING_READY.has(accounting) || sales === "Won";
       })();
 
-      return matchesSearch && matchesBoard && matchesStatus && matchesAssignee && matchesOpsView && matchesSavedView;
+      return matchesSearch && matchesBoard && matchesStatus && matchesAssignee && matchesPipeline;
     });
 
     const toMillis = (value?: string) => {
@@ -281,14 +270,10 @@ export default function TicketsInbox() {
 
     return filtered.sort((left, right) => {
       if (sortBy === "created-asc") return toMillis((left.card as any).createdAt) - toMillis((right.card as any).createdAt);
-      if (sortBy === "arrival-asc") {
-        return toMillis(left.card.arrivalDate || left.card.checkInDate || left.card.dueDate) -
-          toMillis(right.card.arrivalDate || right.card.checkInDate || right.card.dueDate);
-      }
       if (sortBy === "due-asc") return toMillis(left.card.dueDate) - toMillis(right.card.dueDate);
       return toMillis((right.card as any).createdAt) - toMillis((left.card as any).createdAt);
     });
-  }, [tickets, searchQuery, boardFilter, statusFilter, assigneeFilter, opsView, savedView, sortBy, user?._id]);
+  }, [tickets, searchQuery, boardFilter, statusFilter, assigneeFilter, pipelineView, sortBy, user?._id]);
 
   useEffect(() => {
     if (filteredTickets.length === 0) {
@@ -317,23 +302,22 @@ export default function TicketsInbox() {
     setAgentDraft(selectedTicket.card.agent?._id || "");
   }, [selectedTicket?.card._id]);
 
-  const savedViewCounters = useMemo(() => {
-    const today = new Date();
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const pipelineCounters = useMemo(() => {
+    const assignedToMe = (ticket: TicketItem) =>
+      ticket.card.agent?._id === user?._id || ticket.card.members?.some((member) => member._id === user?._id);
     return {
-      "my-queue": tickets.filter((ticket) =>
-        ticket.card.agent?._id === user?._id || ticket.card.members?.some((member) => member._id === user?._id)
-      ).length,
-      "today-arrivals": tickets.filter((ticket) => {
-        const arrival = toDateOnly(ticket.card.arrivalDate || ticket.card.checkInDate || ticket.card.dueDate);
-        return !!arrival && isSameDay(arrival, todayStart);
-      }).length,
-      "pending-confirmations": tickets.filter((ticket) => {
-        const eligible = ticket.card.status === "Confirmed" || ticket.card.status === "Reconfirmed";
-        return eligible && (!ticket.card.supplierConfirmationNumber || !ticket.card.hotelConfirmationNumber);
-      }).length,
+      all: tickets.length,
+      mine: tickets.filter(assignedToMe).length,
+      leads: tickets.filter((ticket) => getCaseStage(ticket.card) === "leads").length,
+      working: tickets.filter((ticket) => getCaseStage(ticket.card) === "working").length,
+      won: tickets.filter((ticket) => ticket.card.salesStage === "Won" || ticket.card.status === "Closed").length,
+      accounting: tickets.filter((ticket) => ACCOUNTING_READY.has(String(ticket.card.accountingStatus || "Not ready")) || ticket.card.salesStage === "Won").length,
     };
   }, [tickets, user?._id]);
+
+  const setPipelineView = (view: PipelineView) => {
+    setLocation(view === "all" ? "/tickets" : `/tickets?view=${view}`);
+  };
 
   const assignableUsers = useMemo(() => {
     const selected = filteredTickets.filter((ticket) => selectedIds.has(ticket.card._id)).filter(canManageTicket);
@@ -465,12 +449,11 @@ export default function TicketsInbox() {
   };
 
   const clearFilters = () => {
-    setSavedView("none");
-    setOpsView("all");
     setSearchQuery("");
     setBoardFilter("all");
     setStatusFilter("all");
     setAssigneeFilter("all");
+    setPipelineView("all");
   };
 
   const handleBulkAssignMember = async (targetUserId: string) => {
@@ -559,9 +542,45 @@ export default function TicketsInbox() {
         dueComplete: true,
       }) as Card;
       replaceLocalCard(ticket.card._id, updated);
-      toast.success("Ticket closed");
+      toast.success("Case closed");
     } catch {
-      toast.error("Failed to close ticket");
+      toast.error("Failed to close case");
+    }
+  };
+
+  const handleCloseSale = async (ticket: TicketItem) => {
+    if (!canManageTicket(ticket)) {
+      toast.error("You do not have permission on this board");
+      return;
+    }
+    try {
+      const updated = await cardApi.update(ticket.board._id, ticket.list._id, ticket.card._id, {
+        salesStage: "Won",
+        status: "Closed",
+        accountingStatus: "Ready for accounting",
+        dueComplete: true,
+      }) as Card;
+      replaceLocalCard(ticket.card._id, updated);
+      toast.success("Sale closed. Ready for accounting.");
+    } catch {
+      toast.error("Failed to close the sale");
+    }
+  };
+
+  const handleSendToAccounting = async (ticket: TicketItem) => {
+    if (!canManageTicket(ticket)) {
+      toast.error("You do not have permission on this board");
+      return;
+    }
+    try {
+      const updated = await cardApi.update(ticket.board._id, ticket.list._id, ticket.card._id, {
+        salesStage: ticket.card.salesStage === "Won" ? ticket.card.salesStage : "Won",
+        accountingStatus: "Sent to accounting",
+      }) as Card;
+      replaceLocalCard(ticket.card._id, updated);
+      toast.success("Sent to accounting");
+    } catch {
+      toast.error("Failed to send to accounting");
     }
   };
 
@@ -622,7 +641,7 @@ export default function TicketsInbox() {
         <div className="flex flex-1 items-center justify-center">
           <div className="flex items-center gap-3 rounded-full border border-[#D9E5F4] bg-white px-5 py-3 text-sm font-medium text-[#486581] shadow-sm">
             <Loader2 className="h-5 w-5 animate-spin text-[#2063E9]" />
-            Loading tickets workspace...
+            Loading cases...
           </div>
         </div>
       </div>
@@ -643,8 +662,11 @@ export default function TicketsInbox() {
         <header className="border-b border-[#D9E5F4] bg-white">
           <div className="flex h-16 items-center justify-between px-6">
             <div className="flex items-center gap-3">
-              <div className="text-sm font-medium text-[#2063E9]">Tickets</div>
+              <div className="text-sm font-medium text-[#2063E9]">
+                {pipelineView === "accounting" ? "Accounting" : "Cases"}
+              </div>
               <div className="text-sm text-[#829AB1]">{filteredTickets.length}</div>
+              <div className="hidden text-xs text-[#829AB1] md:block">Respond.io leads → close sale → accounts</div>
             </div>
             <div className="flex items-center gap-2">
               <FreshdeskNewLauncher
@@ -670,18 +692,20 @@ export default function TicketsInbox() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               {[
-                { key: "none" as SavedView, label: "All queue", count: tickets.length },
-                { key: "my-queue" as SavedView, label: "My queue", count: savedViewCounters["my-queue"] },
-                { key: "today-arrivals" as SavedView, label: "Today arrivals", count: savedViewCounters["today-arrivals"] },
-                { key: "pending-confirmations" as SavedView, label: "Pending confirmations", count: savedViewCounters["pending-confirmations"] },
+                { key: "all" as PipelineView, label: "All", count: pipelineCounters.all },
+                { key: "mine" as PipelineView, label: "Mine", count: pipelineCounters.mine },
+                { key: "leads" as PipelineView, label: "New leads", count: pipelineCounters.leads },
+                { key: "working" as PipelineView, label: "Working", count: pipelineCounters.working },
+                { key: "won" as PipelineView, label: "Closed sales", count: pipelineCounters.won },
+                { key: "accounting" as PipelineView, label: "Accounting", count: pipelineCounters.accounting },
               ].map((view) => (
                 <Button
                   key={view.key}
                   size="sm"
-                  variant={savedView === view.key ? "default" : "outline"}
-                  onClick={() => setSavedView(view.key)}
+                  variant={pipelineView === view.key ? "default" : "outline"}
+                  onClick={() => setPipelineView(view.key)}
                   className={
-                    savedView === view.key
+                    pipelineView === view.key
                       ? "rounded-2xl bg-[#102A43] text-white hover:bg-[#183B5B]"
                       : "rounded-2xl border-[#D9E5F4] bg-white"
                   }
@@ -695,17 +719,16 @@ export default function TicketsInbox() {
                 <ArrowUpDown className="h-4 w-4 text-[#829AB1]" />
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as "created-desc" | "created-asc" | "arrival-asc" | "due-asc")}
+                  onChange={(e) => setSortBy(e.target.value as "created-desc" | "created-asc" | "due-asc")}
                   className="bg-transparent text-sm text-[#486581] outline-none"
                 >
-                  <option value="created-desc">Date created</option>
-                  <option value="created-asc">Date created asc</option>
-                  <option value="arrival-asc">Arrival date</option>
+                  <option value="created-desc">Newest</option>
+                  <option value="created-asc">Oldest</option>
                   <option value="due-asc">Due date</option>
                 </select>
               </div>
               <select value={boardFilter} onChange={(e) => setBoardFilter(e.target.value)} className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-3 text-sm text-[#486581]">
-                <option value="all">All boards</option>
+                <option value="all">All pipelines</option>
                 {boards.map((board) => (
                   <option key={board._id} value={board._id}>{board.title}</option>
                 ))}
@@ -717,16 +740,8 @@ export default function TicketsInbox() {
                 ))}
               </select>
               <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-3 text-sm text-[#486581]">
-                <option value="all">All assignees</option>
+                <option value="all">Everyone</option>
                 <option value="me">Assigned to me</option>
-              </select>
-              <select value={opsView} onChange={(e) => setOpsView(e.target.value as OpsView)} className="h-10 rounded-2xl border border-[#D9E5F4] bg-white px-3 text-sm text-[#486581]">
-                <option value="all">All views</option>
-                <option value="today-arrivals">Today arrivals</option>
-                <option value="arrivals-next-3-days">Arrivals in 3 days</option>
-                <option value="pending-supplier-confirmation">Pending supplier conf.</option>
-                <option value="pending-hotel-confirmation">Pending hotel conf.</option>
-                <option value="in-house">In-house</option>
               </select>
               <Button variant="ghost" size="sm" className="rounded-2xl text-[#486581]" onClick={clearFilters}>
                 <Filter className="mr-1 h-4 w-4" />
@@ -830,7 +845,10 @@ export default function TicketsInbox() {
                         </div>
                         <div className="mt-2 flex items-center gap-2 text-xs text-[#6B7C93]">
                           <Phone className="h-3.5 w-3.5" />
-                          <span className="line-clamp-1">{snippet}</span>
+                          <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 font-medium text-[#334155]">
+                            {ticket.card.salesStage || "New"}
+                          </span>
+                          <span className="line-clamp-1">{ticket.card.source || "Respond.io"} · {snippet}</span>
                         </div>
                       </button>
                     </div>
@@ -838,27 +856,26 @@ export default function TicketsInbox() {
                 );
               })}
               {filteredTickets.length === 0 && (
-                <div className="px-6 py-10 text-center text-sm text-[#6B7C93]">No tickets found for the current filters.</div>
+                <div className="px-6 py-10 text-center text-sm text-[#6B7C93]">No cases in this view. Add a lead from Respond.io to get started.</div>
               )}
             </div>
           </aside>
 
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
             {!selectedTicket ? (
-              <div className="flex flex-1 items-center justify-center text-sm text-[#6B7C93]">Select a ticket to open the workspace.</div>
+              <div className="flex flex-1 items-center justify-center text-sm text-[#6B7C93]">Select a case to work it.</div>
             ) : (
               <>
                 <div className="border-b border-[#D9E5F4] px-5 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white"><Reply className="mr-1 h-4 w-4" />Reply</Button>
-                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white"><NotebookPen className="mr-1 h-4 w-4" />Note</Button>
-                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white"><Forward className="mr-1 h-4 w-4" />Forward</Button>
-                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => handleCloseTicket(selectedTicket)}><CheckCircle2 className="mr-1 h-4 w-4" />Close</Button>
-                      <Button variant="ghost" size="sm" className="rounded-2xl"><MoreHorizontal className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => setComposerMode("reply")}><Reply className="mr-1 h-4 w-4" />Note</Button>
+                      <Button size="sm" className="rounded-2xl bg-[#17B897] text-white hover:bg-[#12967C]" onClick={() => handleCloseSale(selectedTicket)}>Close sale</Button>
+                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => handleSendToAccounting(selectedTicket)}>Send to accounting</Button>
+                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => handleCloseTicket(selectedTicket)}><CheckCircle2 className="mr-1 h-4 w-4" />Close case</Button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => setLocation(`/board/${selectedTicket.board._id}?card=${selectedTicket.card._id}`)}><ExternalLink className="mr-1 h-4 w-4" />Open in board</Button>
+                      <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => setLocation(`/board/${selectedTicket.board._id}?card=${selectedTicket.card._id}`)}><ExternalLink className="mr-1 h-4 w-4" />Pipeline</Button>
                       <Button variant="outline" size="sm" className="rounded-2xl border-[#D9E5F4] bg-white" onClick={() => handleAssignAgentToMe(selectedTicket)}><UserPlus className="mr-1 h-4 w-4" />Assign to me</Button>
                     </div>
                   </div>

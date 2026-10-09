@@ -200,7 +200,7 @@ export default function DailyOpsWorkspace() {
       try {
         const users = await adminUserApi.getAll();
         nextMembers.push(
-          ...users.map((account: { _id: string; username: string; email: string }) => ({
+          ...users.map((account) => ({
             _id: account._id,
             username: account.username,
             email: account.email,

@@ -66,7 +66,7 @@ export default function Home() {
             </Button>
             {isAuthenticated ? (
               <Button
-                onClick={() => navigate("/dashboard")}
+                onClick={() => navigate("/tickets")}
                 className="bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-lg shadow-indigo-500/25"
               >
                 Go to Dashboard

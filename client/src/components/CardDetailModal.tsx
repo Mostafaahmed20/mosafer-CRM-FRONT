@@ -52,6 +52,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { QuotationEditor } from "./QuotationEditor";
+import { TravelServicesPanel } from "./TravelServicesPanel";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
@@ -143,7 +144,7 @@ export function CardDetailModal({
   const [ticketPriority, setTicketPriority] = useState("Medium");
   const [ticketGroup, setTicketGroup] = useState("Operations");
   const [ticketAgent, setTicketAgent] = useState<string>("");
-  const [ticketSource, setTicketSource] = useState("Agency");
+  const [ticketSource, setTicketSource] = useState("Respond.io");
   const [salesStage, setSalesStage] = useState("New");
   const [qualificationStatus, setQualificationStatus] = useState("Unqualified");
   const [leadNeed, setLeadNeed] = useState("");
@@ -199,6 +200,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [isEditingTicketFields, setIsEditingTicketFields] = useState(false);
+  const [casePanel, setCasePanel] = useState<"work" | "sale" | "more">("work");
+  const [isClosingSale, setIsClosingSale] = useState(false);
   const safeMembers = members.filter(
     (member): member is BoardMember & { user: NonNullable<BoardMember["user"]> } =>
       Boolean(member?.user?._id && member.user?.username)
@@ -228,7 +231,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
       setTicketPriority(card.priority || "Medium");
       setTicketGroup(card.group || "Operations");
       setTicketAgent(card.agent?._id || "");
-      setTicketSource(card.source || "Agency");
+      setTicketSource(card.source || "Respond.io");
       setSalesStage(card.salesStage || "New");
       setQualificationStatus(card.qualificationStatus || "Unqualified");
       setLeadNeed(card.leadNeed || "");
@@ -356,7 +359,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     arrivalDate !== (card.arrivalDate ? new Date(card.arrivalDate).toISOString().split("T")[0] : "") ||
     paymentStatus !== (card.paymentStatus || "Not required") ||
     coveringStatus !== ((card.coveringStatus as "Requested" | "Paid by VCC" | "Invoiced to agency") || "Requested") ||
-    ticketSource !== (card.source || "Agency") ||
+    ticketSource !== (card.source || "Respond.io") ||
     ticketType !== (card.type || "Booking request") ||
     ticketStatus !== (card.status || "Requested") ||
     ticketPriority !== (card.priority || "Medium") ||
@@ -372,6 +375,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     followUpChannel !== (card.followUpChannel || "WhatsApp") ||
     followUpNote !== (card.followUpNote || "") ||
     followUpCompleted !== Boolean(card.followUpCompleted) ||
+    accountingStatus !== (card.accountingStatus || "Not ready") ||
     accountingReference !== (card.accountingReference || "") ||
     accountingNotes !== (card.accountingNotes || "")
   ) : false;
@@ -462,13 +466,34 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
         followUpChannel,
         followUpNote,
         followUpCompleted,
+        accountingStatus,
         accountingReference,
         accountingNotes,
       } as any);
-      toast.success("Ticket properties saved");
+      toast.success("Case details saved");
       setIsEditingTicketFields(false);
     } finally {
       setIsSavingTicketFields(false);
+    }
+  };
+
+  const handleCloseSale = async () => {
+    if (!card || !canEditCard(userRole)) return;
+    setIsClosingSale(true);
+    try {
+      await handleTicketFieldUpdate({
+        salesStage: "Won",
+        status: "Closed",
+        accountingStatus: accountingStatus === "Not ready" ? "Ready for accounting" : accountingStatus,
+        dueComplete: true,
+      } as any);
+      setSalesStage("Won");
+      setTicketStatus("Closed");
+      if (accountingStatus === "Not ready") setAccountingStatus("Ready for accounting");
+      toast.success("Sale closed. Accounting can pick this up.");
+      setCasePanel("sale");
+    } finally {
+      setIsClosingSale(false);
     }
   };
 
@@ -487,7 +512,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
   ].some((value) => String(value || "").trim().length > 0);
 
   const hasBookingWorkflowOverrides =
-    ticketSource !== "Agency" ||
+    ticketSource !== "Respond.io" ||
     ticketType !== "Booking request" ||
     ticketStatus !== "Requested" ||
     ticketPriority !== "Medium" ||
@@ -946,10 +971,12 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
       className: "border-[#F7D8A8] bg-[#FFF6E8] text-[#A16207]",
     },
     {
-      key: "source",
-      label: "Source",
-      value: ticketSource || "Not set",
-      className: "border-[#D9E5F4] bg-white text-[#486581]",
+      key: "stage",
+      label: "Sale",
+      value: salesStage || "New",
+      className: salesStage === "Won"
+        ? "border-[#BFE7D1] bg-[#EFFCF4] text-[#047857]"
+        : "border-[#D9E5F4] bg-white text-[#486581]",
     },
   ];
 
@@ -1035,34 +1062,6 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     "rounded-[24px] border border-[#D9E5F4] bg-[linear-gradient(180deg,#FFFFFF_0%,#F8FBFF_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.06)]";
   const sidebarPopoverClass =
     "mt-3 rounded-[20px] border border-[#D8E6F6] bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.08)]";
-
-  const handleConvertToOrder = async (customerId: string) => {
-    if (!boardId || !currentListId || !card) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/boards/${boardId}/lists/${currentListId}/cards/${card._id}/convert-to-order`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify({ customerId }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.message || "Could not convert card to order");
-      }
-
-      await onUpdate({
-        status: "In Progress",
-        salesStage: "Won",
-        accountingStatus: "Not ready",
-      } as any);
-      toast.success(data.alreadyConverted ? "Order is linked and booking is in progress" : `Order ${data.order.orderNumber} created; continue with supplier bookings`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not convert card to order");
-    }
-  };
 
   return (
     <Dialog
@@ -1165,6 +1164,16 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                     >
                       <Copy className="mr-2 h-4 w-4 shrink-0" />
                       {copied ? "Copied" : "Copy link"}
+                    </Button>
+                  )}
+                  {canEditCard(userRole) && (
+                    <Button
+                      size="sm"
+                      disabled={isClosingSale}
+                      onClick={handleCloseSale}
+                      className="h-10 rounded-2xl bg-[#17B897] px-4 text-white hover:bg-[#12967C]"
+                    >
+                      {isClosingSale ? "Closing..." : salesStage === "Won" ? "Send to accounting" : "Close sale"}
                     </Button>
                   )}
                   {canEditCard(userRole) && (
@@ -1442,9 +1451,11 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
               <div className="md:col-span-2 rounded-[18px] border border-[#D9E5F4] bg-white p-3">
                 <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748B]">Accounting handoff</div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="text-xs font-semibold text-[#64748B]">Accounting status
-                    <div className="mt-1 flex h-11 items-center rounded-2xl border border-[#D9E5F4] bg-slate-50 px-4 text-sm font-normal text-[#102A43]">{accountingStatus}</div>
-                  </div>
+                  <label className="text-xs font-semibold text-[#64748B]">Accounting status
+                    <select value={accountingStatus} onChange={(e) => setAccountingStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
+                      {["Not ready", "Ready for accounting", "Sent to accounting", "Paid", "Closed"].map((option) => <option key={option}>{option}</option>)}
+                    </select>
+                  </label>
                   <label className="text-xs font-semibold text-[#64748B]">Invoice or accounting reference
                     <Input value={accountingReference} onChange={(e) => setAccountingReference(e.target.value)} className="mt-1" placeholder="Invoice number" />
                   </label>
@@ -1668,7 +1679,8 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           )}
         </div>
 
-        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} agencyName={card.agencyName} onClientAccepted={handleConvertToOrder} />}
+        {boardId && card && <TravelServicesPanel boardId={boardId} requestId={card._id} />}
+        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} />}
 
         {/* Covering Services */}
         <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/60">
@@ -2601,3 +2613,4 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     </Dialog>
   );
 }
+
