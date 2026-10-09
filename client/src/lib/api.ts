@@ -1462,6 +1462,88 @@ export const adminTicketsApi = {
   },
 };
 
+export type ConfirmedLeadsReportFilters = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  agentId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type ConfirmedLeadReportRow = {
+  lead: Card & { createdAt?: string; updatedAt?: string };
+  board: { _id: string; title: string } | null;
+  list: { _id: string; title: string; board: string } | null;
+  agent: { _id: string; username: string; email?: string };
+  quotation: {
+    _id: string;
+    version: number;
+    status: string;
+    currency: string;
+    lines: Array<Record<string, unknown>>;
+    notes: string;
+    sentAt?: string | null;
+    acceptedAt?: string | null;
+    createdAt?: string | null;
+  } | null;
+  order: Record<string, any> | null;
+  payments: Array<{
+    _id: string;
+    paymentMethod: string;
+    paymentReference: string;
+    amount: number;
+    currency: string;
+    status: string;
+    paidAt?: string | null;
+    refundedAt?: string | null;
+    notes: string;
+    attachments: Array<{ name: string; url: string; type: string; size: number; uploadedAt?: string | null }>;
+    createdAt?: string | null;
+  }>;
+  financials: {
+    currency: string;
+    netCost: number;
+    sellingPrice: number;
+    profit: number;
+    marginPercent: number;
+    paid: number;
+    refunded: number;
+    pending: number;
+    balance: number;
+    paymentStatus: string;
+  };
+};
+
+export type ConfirmedLeadsReportResponse = {
+  scope: string;
+  generatedAt: string;
+  items: ConfirmedLeadReportRow[];
+  agents: Array<{ _id: string; username: string; email: string; role: string }>;
+  summary: { confirmedLeads: number; sellingPrice: number; netCost: number; profit: number; paid: number; balance: number };
+  byAgent: Array<{ agentId: string; username: string; leads: number; sellingPrice: number; netCost: number; profit: number; paid: number; balance: number }>;
+  pagination: { page: number; limit: number; total: number; totalPages: number; hasNext: boolean };
+  filters: Record<string, string>;
+};
+
+function buildConfirmedLeadsQuery(params: ConfirmedLeadsReportFilters = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  return query.toString();
+}
+
+export const adminReportsApi = {
+  getConfirmedLeads: async (params: ConfirmedLeadsReportFilters = {}) => {
+    const query = buildConfirmedLeadsQuery(params);
+    const response = await fetch(`${API_URL}/api/admin/reports/confirmed-leads${query ? `?${query}` : ""}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleAdminTicketsResponse<ConfirmedLeadsReportResponse>(response);
+  },
+};
+
 // Board API
 export const boardApi = {
   getAll: async () => {

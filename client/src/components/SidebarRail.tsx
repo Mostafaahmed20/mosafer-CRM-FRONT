@@ -28,6 +28,7 @@ const moreItems = [
   { id: "suppliers", icon: Building2, label: "Suppliers", path: "/workspace/suppliers", adminOnly: false },
   { id: "search", icon: Search, label: "Search", path: "/workspace/search", adminOnly: false },
   { id: "analytics", icon: BarChart3, label: "Analytics", path: "/workspace/analytics", analyticsOnly: true },
+  { id: "confirmed-leads-report", icon: ClipboardList, label: "Confirmed leads", path: "/workspace/confirmed-leads-report", adminOnly: true },
   { id: "admin-users", icon: Shield, label: "Users", path: "/workspace/admin-users", adminOnly: true },
   { id: "settings", icon: Settings, label: "Settings", path: "/workspace/settings", adminOnly: false },
 ];
