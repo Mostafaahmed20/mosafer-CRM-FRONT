@@ -55,6 +55,7 @@ export type CustomerHistoryEvent = {
 
 export type CustomerProfile = {
   _id: string;
+  customerName?: string;
   agencyName: string;
   phone?: string;
   country?: string;
@@ -227,7 +228,7 @@ async function tryCustomerApi<T>(request: () => Promise<Response>, fallback: () 
 }
 
 export const customerApi = {
-  getAll: async () => {
+  getAll: async (_boardId?: string) => {
     return tryCustomerApi<CustomerProfile[]>(
       () =>
         fetch(`${API_URL}/api/customers`, {
@@ -336,6 +337,13 @@ export type AnalyticsReportRow = {
   action: string;
 };
 
+export type AnalyticsSalesFunnel = {
+  stageCounts: Array<{ stage: string; count: number }>;
+  averageNewToWonHours: number | null;
+  conversionTimeSampleSize: number;
+  lossReasons: Array<{ reason: string; count: number }>;
+};
+
 export type AnalyticsDashboardData = {
   range: AnalyticsRange;
   generatedAt: string;
@@ -353,6 +361,7 @@ export type AnalyticsDashboardData = {
     backlog: number;
     firstResponse: number;
   };
+  salesFunnel?: AnalyticsSalesFunnel;
   source: "api" | "mock";
 };
 
@@ -1203,6 +1212,7 @@ export type AdminUserRecord = {
   email: string;
   role: GlobalUserRole;
   canViewAllAnalytics: boolean;
+  workflowRoles: Array<"sales" | "operations" | "accounting">;
   emailVerified?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -1215,6 +1225,7 @@ function normalizeAdminUserRecord(input: any): AdminUserRecord {
     email: String(input?.email || ""),
     role: String(input?.role || "user").toLowerCase() === "admin" ? "admin" : "user",
     canViewAllAnalytics: Boolean(input?.canViewAllAnalytics),
+    workflowRoles: Array.isArray(input?.workflowRoles) ? input.workflowRoles.filter((role: unknown): role is "sales" | "operations" | "accounting" => ["sales", "operations", "accounting"].includes(String(role))) : [],
     emailVerified: typeof input?.emailVerified === "boolean" ? input.emailVerified : undefined,
     createdAt: typeof input?.createdAt === "string" ? input.createdAt : undefined,
     updatedAt: typeof input?.updatedAt === "string" ? input.updatedAt : undefined,
@@ -1421,6 +1432,15 @@ export const adminUserApi = {
     const raw = await handleResponse<any>(response);
     return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
   },
+  setWorkflowRoles: async (userId: string, workflowRoles: Array<"sales" | "operations" | "accounting">) => {
+    const response = await fetch(`${API_URL}/api/users/admin/${encodeURIComponent(userId)}/workflow-roles`, {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ workflowRoles }),
+    });
+    const raw = await handleResponse<any>(response);
+    return raw?.user ? normalizeAdminUserRecord(raw.user) : normalizeAdminUserRecord(raw);
+  },
 };
 
 export const adminTicketsApi = {
@@ -1582,12 +1602,14 @@ export const listApi = {
 // Card API
 export type CardCreateData = {
   title: string;
+  customerProfileId?: string;
+  customerPhone?: string;
   description?: string;
   bookingRef?: string;
   agencyName?: string;
   destination?: string;
   travelerCount?: number;
-  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[];
+  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[];
   hotelName?: string;
   source?: string;
   salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
@@ -1725,6 +1747,7 @@ export type QuotationLine = {
   _id?: string;
   serviceType: "Flight" | "Hotel" | "Tour" | "Transfer" | "Other";
   description: string;
+  supplierName?: string;
   quantity: number;
   netRate: number;
   sellingRate: number;
@@ -1756,6 +1779,14 @@ export const quotationApi = {
       method: "PATCH", headers: getAuthHeaders(), body: JSON.stringify(data),
     });
     return handleResponse<Quotation>(response);
+  },
+  convertToOrder: async (boardId: string, cardId: string, quotationId: string, customerId: string) => {
+    const response = await fetch(`${API_URL}/api/boards/${boardId}/requests/${cardId}/quotations/${quotationId}/convert-to-order`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ customerId }),
+    });
+    return handleResponse<{ order: { _id: string; orderNumber: string }; duplicate?: boolean }>(response);
   },
 };
 
@@ -1913,7 +1944,7 @@ export type Card = {
   agencyName?: string;
   destination?: string;
   travelerCount?: number;
-  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[];
+  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[];
   hotelName?: string;
   supplierName?: string;
   supplierConfirmationNumber?: string;
@@ -1932,6 +1963,19 @@ export type Card = {
   group?: string;
   agent?: Member;
   source?: string;
+  salesStage?: "New" | "Contacted" | "Qualified" | "Quoted" | "Follow-up" | "Won" | "Lost";
+  qualificationStatus?: "Unqualified" | "Qualified" | "Not a fit";
+  leadNeed?: string;
+  leadBudget?: number;
+  travelDates?: string;
+  lossReason?: string;
+  followUpAt?: string;
+  followUpChannel?: "WhatsApp" | "Email" | "Phone" | "Other";
+  followUpNote?: string;
+  followUpCompleted?: boolean;
+  accountingStatus?: "Not ready" | "Ready for accounting" | "Sent to accounting" | "Paid" | "Closed";
+  accountingReference?: string;
+  accountingNotes?: string;
   handoverStatus?: "Not set" | "Resolved in shift" | "Pending for next shift";
   handoverSummary?: string;
   handoverDone?: string;
@@ -1973,7 +2017,7 @@ export type CardUpdateData = {
   agencyName?: string;
   destination?: string;
   travelerCount?: number;
-  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Other")[];
+  travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[];
   hotelName?: string;
   supplierName?: string;
   supplierConfirmationNumber?: string;
@@ -1992,6 +2036,19 @@ export type CardUpdateData = {
   group?: string;
   agent?: string | null;
   source?: string;
+  salesStage?: Card["salesStage"];
+  qualificationStatus?: Card["qualificationStatus"];
+  leadNeed?: string;
+  leadBudget?: number;
+  travelDates?: string;
+  lossReason?: string;
+  followUpAt?: string | null;
+  followUpChannel?: Card["followUpChannel"];
+  followUpNote?: string;
+  followUpCompleted?: boolean;
+  accountingStatus?: Card["accountingStatus"];
+  accountingReference?: string;
+  accountingNotes?: string;
   handoverStatus?: "Not set" | "Resolved in shift" | "Pending for next shift";
   handoverSummary?: string;
   handoverDone?: string;

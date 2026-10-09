@@ -276,15 +276,15 @@ export default function Dashboard() {
 
             <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                { label: "Flight orders", icon: Plane, detail: "Find PNRs and booking references" },
-                { label: "Hotel orders", icon: Hotel, detail: "Review supplier confirmations" },
-                { label: "Packages", icon: PackageSearch, detail: "Open travel service requests" },
-                { label: "Payments", icon: CreditCard, detail: "Check payment-related tickets" },
+                { label: "Flight orders", icon: Plane, detail: "Find PNRs and booking references", path: "/orders?view=flight" },
+                { label: "Hotel orders", icon: Hotel, detail: "Review supplier confirmations", path: "/orders?view=hotel" },
+                { label: "Packages", icon: PackageSearch, detail: "Open travel service requests", path: "/orders?view=packages" },
+                { label: "Payments", icon: CreditCard, detail: "Check payment-related orders", path: "/orders?view=payments" },
               ].map((item) => (
                 <button
                   key={item.label}
                   type="button"
-                  onClick={() => setLocation("/workspace/search")}
+                  onClick={() => setLocation(item.path)}
                   className="group flex items-center gap-3 rounded-2xl border border-[#D9E5F4] bg-white px-4 py-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-[#A8C6EA]"
                 >
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2063E9]">
@@ -472,4 +472,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { adminUserApi, type Member } from "@/lib/api";
+import { adminUserApi, type AdminUserRecord, type Member } from "@/lib/api";
 import {
   dailyOpsApi,
   type CoverageSlot,
@@ -200,7 +200,7 @@ export default function DailyOpsWorkspace() {
       try {
         const users = await adminUserApi.getAll();
         nextMembers.push(
-          ...users.map((account) => ({
+          ...users.map((account: AdminUserRecord) => ({
             _id: account._id,
             username: account.username,
             email: account.email,

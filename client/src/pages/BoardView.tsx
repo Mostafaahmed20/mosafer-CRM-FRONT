@@ -1757,6 +1757,7 @@ export default function BoardView() {
               {filteredLists.map((list) => (
                 <TrelloList
                   key={list._id}
+                  boardId={boardId || ""}
                   list={list}
                   onAddCard={(title) => handleAddCard(list._id, title)}
                   onDeleteList={() => handleDeleteList(list._id)}
@@ -2099,6 +2100,9 @@ export default function BoardView() {
         lists={lists.map((l) => ({ _id: l._id, title: l.title }))}
         members={board?.members || []}
         boardId={boardId || undefined}
+        onClientAccepted={async () => {
+          await handleUpdateCard({ salesStage: "Won", status: "Closed", accountingStatus: "Ready for accounting", dueComplete: true });
+        }}
       />
 
       <Dialog open={showArchivedDialog} onOpenChange={setShowArchivedDialog}>

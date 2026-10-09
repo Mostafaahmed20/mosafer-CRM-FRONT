@@ -90,8 +90,7 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
       if (status === "Sent") {
         toast.success("Quotation marked as sent. Send it to the client in your chat app.");
       } else {
-        toast.success("Client confirmation recorded");
-        if (customerId) await onClientAccepted?.(customerId);
+        toast.success("Client confirmation recorded. Create the sale when you are ready.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update quotation status");
@@ -107,7 +106,9 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
     }
     setSaving(true);
     try {
+      const result = await quotationApi.convertToOrder(boardId, requestId, activeQuotation?._id || "", customerId);
       await onClientAccepted?.(customerId);
+      toast.success(result.duplicate ? "Sale already exists; opened for accounting." : `Sale ${result.order.orderNumber} created for accounting.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create order");
     } finally {
@@ -123,7 +124,7 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
             <h3 className="text-base font-semibold text-slate-900">Quotation {version ? `v${version}` : "draft"}</h3>
             {activeQuotation && <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">{activeQuotation.status}</span>}
           </div>
-          <p className="mt-0.5 text-sm text-slate-500">Enter the supplier net and client selling price for each service.</p>
+          <p className="mt-0.5 text-sm text-slate-500">One simple document for the client: supplier net, client selling price, and profit.</p>
         </div>
         <div className="flex items-center gap-2">
           <Input disabled={!editing} value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="h-9 w-16 bg-white px-2 text-xs" />
@@ -167,16 +168,16 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
         ))}
         <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm">
           <div><span className="block text-xs text-slate-500">Net total</span><strong>{totals.net.toFixed(2)} {currency}</strong></div>
-          <div><span className="block text-xs text-slate-500">Selling total</span><strong>{totals.sale.toFixed(2)} {currency}</strong></div>
+          <div><span className="block text-xs text-slate-500">Client price</span><strong>{totals.sale.toFixed(2)} {currency}</strong></div>
           <div><span className="block text-xs text-slate-500">Profit</span><strong className={profit >= 0 ? "text-emerald-700" : "text-red-600"}>{profit.toFixed(2)} {currency}</strong></div>
-          <div><span className="block text-xs text-slate-500">Margin</span><strong className={profit >= 0 ? "text-emerald-700" : "text-red-600"}>{margin.toFixed(1)}%</strong></div>
+          <div><span className="block text-xs text-slate-500">Profit margin</span><strong className={profit >= 0 ? "text-emerald-700" : "text-red-600"}>{margin.toFixed(1)}%</strong></div>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           {activeQuotation && !editing && <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => setActiveQuotation(null)}>New version</Button>}
           {editing && <Button type="button" size="sm" disabled={saving} onClick={saveVersion}>{saving ? "Saving..." : activeQuotation ? "Save draft" : "Save quotation"}</Button>}
           {activeQuotation?.status === "Draft" && <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void updateStatus("Sent")}>Mark sent</Button>}
           {activeQuotation?.status === "Sent" && <Button type="button" size="sm" disabled={saving} onClick={() => void updateStatus("Accepted")}>Client confirmed</Button>}
-          {activeQuotation?.status === "Accepted" && <Button type="button" size="sm" disabled={saving || customersLoading || !customerId} onClick={() => void createOrderFromAcceptedQuote()}>Create order</Button>}
+          {activeQuotation?.status === "Accepted" && <Button type="button" size="sm" disabled={saving || customersLoading || !customerId} onClick={() => void createOrderFromAcceptedQuote()}>{saving ? "Creating sale..." : "Create sale for accounting"}</Button>}
         </div>
       </div>
     </section>
