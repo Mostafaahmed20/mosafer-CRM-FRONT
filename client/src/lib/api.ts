@@ -25,7 +25,8 @@ export type CustomerDecisionRole =
   | "Manager"
   | "Decision Maker"
   | "Owner"
-  | "Operations";
+  | "Operations"
+  | "Other";
 
 export type CustomerTag = "VIP" | "Risky" | "Prepaid" | "Blacklist Watch";
 
@@ -61,9 +62,9 @@ export type CustomerProfile = {
   country?: string;
   language?: string;
   bookingValue?: string;
-  location: string;
-  email: string;
-  decisionRole: CustomerDecisionRole;
+  location?: string;
+  email?: string;
+  decisionRole?: CustomerDecisionRole;
   tags: CustomerTag[];
   contacts: CustomerContact[];
   notes?: string;
@@ -97,9 +98,9 @@ type CustomerCreateData = {
   country?: string;
   language?: string;
   bookingValue?: string;
-  location: string;
-  email: string;
-  decisionRole: CustomerDecisionRole;
+  location?: string;
+  email?: string;
+  decisionRole?: CustomerDecisionRole;
   tags?: CustomerTag[];
   contacts?: CustomerContact[];
   notes?: string;
@@ -135,9 +136,9 @@ function localCreateCustomer(data: CustomerCreateData): CustomerProfile {
     country: data.country?.trim() || "",
     language: data.language?.trim() || "",
     bookingValue: data.bookingValue?.trim() || "",
-    location: data.location.trim(),
-    email: data.email.trim().toLowerCase(),
-    decisionRole: data.decisionRole,
+    location: data.location?.trim() || "",
+    email: data.email?.trim().toLowerCase() || "",
+    decisionRole: data.decisionRole || "Other",
     tags: [...(data.tags || [])],
     contacts: [...(data.contacts || [])],
     notes: data.notes?.trim() || "",
@@ -195,7 +196,7 @@ function ensureNoCustomerDuplicate(
   }
 
   const duplicateEmail = emailKey
-    ? customers.find((c) => c._id !== ignoreId && normalizeCustomerKey(c.email) === emailKey)
+    ? customers.find((c) => c._id !== ignoreId && normalizeCustomerKey(c.email || "") === emailKey)
     : null;
   if (duplicateEmail) {
     throw new Error(`Email already exists: ${duplicateEmail.email}`);
@@ -228,14 +229,53 @@ async function tryCustomerApi<T>(request: () => Promise<Response>, fallback: () 
 }
 
 export const customerApi = {
-  getAll: async (_boardId?: string) => {
-    return tryCustomerApi<CustomerProfile[]>(
-      () =>
-        fetch(`${API_URL}/api/customers`, {
-          headers: getAuthHeaders(),
-        }),
-      () => readLocalCustomers()
-    );
+  getAll: async (_boardId?: string): Promise<CustomerProfile[]> => {
+    const localCustomers = readLocalCustomers();
+    try {
+      const response = await fetch(`${API_URL}/api/customers`, { headers: getAuthHeaders() });
+      if (response.status === 404 || response.status === 501) return localCustomers;
+      const serverCustomers = await handleResponse<CustomerProfile[]>(response);
+      const localOnly = localCustomers.filter((customer) => customer._id.startsWith("local_"));
+      const remainingLocal: CustomerProfile[] = [];
+      const syncedCustomers: CustomerProfile[] = [];
+
+      for (const customer of localOnly) {
+        try {
+          const created = await fetch(`${API_URL}/api/customers`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              agencyName: customer.customerName || customer.agencyName,
+              phone: customer.phone || "",
+              country: customer.country || "",
+              language: customer.language || "",
+              email: customer.email || "",
+            }),
+          });
+          if (created.ok) {
+            syncedCustomers.push(await created.json());
+            continue;
+          }
+          if (created.status === 409 && customer.email) {
+            const matching = serverCustomers.find((saved) => saved.email?.toLowerCase() === customer.email?.toLowerCase());
+            if (matching) continue;
+          }
+          remainingLocal.push(customer);
+        } catch {
+          remainingLocal.push(customer);
+        }
+      }
+
+      if (syncedCustomers.length) {
+        const remainingIds = new Set(remainingLocal.map((customer) => customer._id));
+        writeLocalCustomers(localCustomers.filter((customer) => !customer._id.startsWith("local_") || remainingIds.has(customer._id)));
+      }
+      return [...syncedCustomers, ...serverCustomers];
+    } catch (error: any) {
+      const message = String(error?.message || "");
+      if (message.includes("fetch") || !API_URL) return localCustomers;
+      throw error;
+    }
   },
 
   create: async (data: CustomerCreateData) => {
@@ -273,9 +313,9 @@ export const customerApi = {
         const updated: CustomerProfile = {
           ...current,
           agencyName: data.agencyName?.trim() ?? current.agencyName,
-          location: data.location?.trim() ?? current.location,
-          email: data.email?.trim().toLowerCase() ?? current.email,
-          decisionRole: data.decisionRole ?? current.decisionRole,
+          location: data.location?.trim() ?? current.location ?? "",
+          email: data.email?.trim().toLowerCase() ?? current.email ?? "",
+          decisionRole: data.decisionRole ?? current.decisionRole ?? "Other",
           tags: data.tags ? [...data.tags] : current.tags,
           contacts: data.contacts ? [...data.contacts] : current.contacts,
           notes: data.notes !== undefined ? data.notes : current.notes,
@@ -1488,6 +1528,9 @@ export type ConfirmedLeadReportRow = {
     createdAt?: string | null;
   } | null;
   order: Record<string, any> | null;
+  customer: { _id: string; name: string; agencyName: string; phone: string; email: string; location: string; country: string };
+  travelers: Array<{ _id: string; firstName: string; lastName: string; phone?: string; email?: string }>;
+  services: Array<{ type: string; title: string; supplierName?: string; quantity: number; netCost: number; sellingPrice: number; currency: string }>;
   payments: Array<{
     _id: string;
     paymentMethod: string;
@@ -1506,6 +1549,7 @@ export type ConfirmedLeadReportRow = {
     netCost: number;
     sellingPrice: number;
     profit: number;
+    revenueWithoutVat: number;
     marginPercent: number;
     paid: number;
     refunded: number;
@@ -1520,8 +1564,9 @@ export type ConfirmedLeadsReportResponse = {
   generatedAt: string;
   items: ConfirmedLeadReportRow[];
   agents: Array<{ _id: string; username: string; email: string; role: string }>;
-  summary: { confirmedLeads: number; sellingPrice: number; netCost: number; profit: number; paid: number; balance: number };
-  byAgent: Array<{ agentId: string; username: string; leads: number; sellingPrice: number; netCost: number; profit: number; paid: number; balance: number }>;
+  summary: { confirmedLeads: number; sellingPrice: number; netCost: number; profit: number; revenueWithoutVat: number; paid: number; balance: number };
+  currencyTotals: Array<{ currency: string; confirmedLeads: number; sellingPrice: number; netCost: number; profit: number; revenueWithoutVat: number; paid: number; balance: number }>;
+  byAgent: Array<{ agentId: string; username: string; currency: string; leads: number; sellingPrice: number; netCost: number; profit: number; revenueWithoutVat: number; paid: number; balance: number }>;
   pagination: { page: number; limit: number; total: number; totalPages: number; hasNext: boolean };
   filters: Record<string, string>;
 };
@@ -1686,6 +1731,10 @@ export type CardCreateData = {
   title: string;
   customerProfileId?: string;
   customerPhone?: string;
+  customerEmail?: string;
+  preferredLanguage?: "English" | "Arabic";
+  adultCount?: number;
+  childCount?: number;
   description?: string;
   bookingRef?: string;
   agencyName?: string;
@@ -1822,6 +1871,54 @@ export const cardApi = {
       }
     );
     return handleResponse(response);
+  },
+};
+
+export type ReservationLookupResult = {
+  reservationRef: string;
+  lead: {
+    _id: string;
+    title: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string;
+    destination: string;
+    travelDates: string;
+    checkInDate?: string;
+    checkOutDate?: string;
+    adultCount: number;
+    childCount: number;
+    travelerCount: number;
+    travelServices: string[];
+    salesStage: string;
+    status: string;
+    source: string;
+    leadNeed: string;
+    description: string;
+    agent?: Member | null;
+    createdAt?: string;
+  } | null;
+  workspace: { boardId: string; boardTitle: string; listTitle: string } | null;
+  order: {
+    _id: string;
+    orderNumber: string;
+    status: string;
+    accountingStatus: string;
+    currency: string;
+    customerTotal: number;
+    supplierCost: number;
+    grossMargin: number;
+    amountPaid: number;
+    balance: number;
+  } | null;
+};
+
+export const reservationApi = {
+  lookup: async (reference: string) => {
+    const response = await fetch(`${API_URL}/api/reservations/lookup/${encodeURIComponent(reference)}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<ReservationLookupResult>(response);
   },
 };
 
@@ -2022,10 +2119,16 @@ export type Card = {
   title: string;
   subject?: string;
   requester?: string;
+  reservationRef?: string;
   bookingRef?: string;
   agencyName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  preferredLanguage?: "English" | "Arabic";
   destination?: string;
   travelerCount?: number;
+  adultCount?: number;
+  childCount?: number;
   travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[];
   hotelName?: string;
   supplierName?: string;
@@ -2095,10 +2198,15 @@ export type CardUpdateData = {
   title?: string;
   subject?: string;
   requester?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  preferredLanguage?: "English" | "Arabic";
   bookingRef?: string;
   agencyName?: string;
   destination?: string;
   travelerCount?: number;
+  adultCount?: number;
+  childCount?: number;
   travelServices?: ("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[];
   hotelName?: string;
   supplierName?: string;

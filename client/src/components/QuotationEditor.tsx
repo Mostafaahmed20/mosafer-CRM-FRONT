@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ const emptyLine = (): QuotationLine => ({
   serviceType: "Flight", description: "", supplierName: "", quantity: 1, netRate: 0, sellingRate: 0,
 });
 
-export function QuotationEditor({ boardId, requestId, agencyName, onClientAccepted }: { boardId: string; requestId: string; agencyName?: string; onClientAccepted?: (customerId: string) => Promise<void> }) {
+export function QuotationEditor({ boardId, requestId, agencyName, customerEmail, customerPhone, existingNet, existingSelling, existingDescription, existingSupplier, existingCurrency, onClientAccepted }: { boardId: string; requestId: string; agencyName?: string; customerEmail?: string; customerPhone?: string; existingNet?: number; existingSelling?: number; existingDescription?: string; existingSupplier?: string; existingCurrency?: string; onClientAccepted?: (customerId: string, orderId: string) => Promise<void> }) {
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
   const [currency, setCurrency] = useState("USD");
   const [version, setVersion] = useState<number | null>(null);
@@ -19,25 +19,56 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
   const [customerId, setCustomerId] = useState("");
   const [customersLoading, setCustomersLoading] = useState(true);
 
+  const loadCustomers = async () => {
+    setCustomersLoading(true);
+    try {
+      const profiles = await customerApi.getAll(boardId);
+      setCustomers(profiles);
+      const normalizedAgency = String(agencyName || "").trim().toLowerCase();
+      const normalizedEmail = String(customerEmail || "").trim().toLowerCase();
+      const normalizedPhone = String(customerPhone || "").replace(/\D/g, "");
+      const matched = profiles.find((profile) => normalizedEmail && (profile.email || "").trim().toLowerCase() === normalizedEmail)
+        || profiles.find((profile) => normalizedPhone && String(profile.phone || "").replace(/\D/g, "") === normalizedPhone)
+        || profiles.find((profile) => normalizedAgency && (profile.customerName || profile.agencyName).trim().toLowerCase() === normalizedAgency);
+      if (matched) setCustomerId(matched._id);
+      else setCustomerId((current) => profiles.some((profile) => profile._id === current) ? current : "");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load customer profiles");
+    } finally {
+      setCustomersLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let active = true;
-    customerApi.getAll(boardId)
-      .then((profiles) => {
-        if (!active) return;
-        setCustomers(profiles);
-        const matched = profiles.find((profile) => profile.agencyName.trim().toLowerCase() === String(agencyName || "").trim().toLowerCase());
-        if (matched) setCustomerId(matched._id);
-      })
-      .catch(() => active && toast.error("Could not load customer profiles"))
-      .finally(() => active && setCustomersLoading(false));
-    return () => { active = false; };
-  }, [agencyName, boardId]);
+    void loadCustomers();
+    const reloadOnFocus = () => void loadCustomers();
+    window.addEventListener("focus", reloadOnFocus);
+    window.addEventListener("storage", reloadOnFocus);
+    return () => {
+      window.removeEventListener("focus", reloadOnFocus);
+      window.removeEventListener("storage", reloadOnFocus);
+    };
+  }, [agencyName, boardId, customerEmail, customerPhone]);
 
   useEffect(() => {
     let active = true;
     quotationApi.list(boardId, requestId)
       .then((quotes) => {
-        if (!active || !quotes[0]) return;
+        if (!active) return;
+        if (!quotes[0]) {
+          if (Number(existingNet || 0) > 0 || Number(existingSelling || 0) > 0) {
+            setCurrency((existingCurrency || "USD").toUpperCase());
+            setLines([{
+              ...emptyLine(),
+              serviceType: existingDescription?.toLowerCase().includes("hotel") ? "Hotel" : "Other",
+              description: existingDescription?.trim() || "Travel package",
+              supplierName: existingSupplier || "",
+              netRate: Number(existingNet || 0),
+              sellingRate: Number(existingSelling || 0),
+            }]);
+          }
+          return;
+        }
         setActiveQuotation(quotes[0]);
         setVersion(quotes[0].version);
         setCurrency(quotes[0].currency);
@@ -45,7 +76,7 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
       })
       .catch(() => active && toast.error("Could not load quotations"));
     return () => { active = false; };
-  }, [boardId, requestId]);
+  }, [boardId, requestId, existingCurrency, existingDescription, existingNet, existingSelling, existingSupplier]);
 
   const totals = useMemo(() => lines.reduce((sum, line) => {
     const quantity = Number(line.quantity || 0);
@@ -104,11 +135,15 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
       toast.error("Choose a customer profile before creating the order");
       return;
     }
+    if (customerId.startsWith("local_")) {
+      toast.error("This client is only saved in this browser. Refresh the customer list after the server connection is restored.");
+      return;
+    }
     setSaving(true);
     try {
       const result = await quotationApi.convertToOrder(boardId, requestId, activeQuotation?._id || "", customerId);
-      await onClientAccepted?.(customerId);
-      toast.success(result.duplicate ? "Sale already exists; opened for accounting." : `Sale ${result.order.orderNumber} created for accounting.`);
+      await onClientAccepted?.(customerId, result.order._id);
+      toast.success(result.duplicate ? `Opened existing sale ${result.order.orderNumber}.` : `Sale ${result.order.orderNumber} created.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create order");
     } finally {
@@ -134,13 +169,21 @@ export function QuotationEditor({ boardId, requestId, agencyName, onClientAccept
         </div>
       </div>
       <div className="space-y-3 bg-slate-50/70 p-5">
-        <label className="block text-xs font-medium text-slate-600">Customer profile
-          <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} disabled={customersLoading || saving} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
+        <div className="text-xs font-medium text-slate-600">
+          <div className="flex items-center justify-between">
+            <label htmlFor={`customer-${requestId}`}>Customer profile</label>
+            <button type="button" onClick={() => void loadCustomers()} disabled={customersLoading || saving} className="inline-flex items-center gap-1 rounded px-2 py-1 text-slate-500 hover:bg-slate-100 disabled:opacity-50" title="Refresh customers">
+              {customersLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Refresh
+            </button>
+          </div>
+          <select id={`customer-${requestId}`} value={customerId} onFocus={() => void loadCustomers()} onChange={(event) => setCustomerId(event.target.value)} disabled={customersLoading || saving} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
             <option value="">{customersLoading ? "Loading customers..." : "Choose a customer for this sale"}</option>
-            {customers.map((customer) => <option key={customer._id} value={customer._id}>{customer.agencyName}</option>)}
+            {customers.map((customer) => <option key={customer._id} value={customer._id}>{customer.customerName || customer.agencyName}{customer.phone ? ` · ${customer.phone}` : ""}{customer._id.startsWith("local_") ? " · browser only" : ""}</option>)}
           </select>
-          {!customersLoading && customers.length === 0 && <span className="mt-1 block font-normal text-amber-700">Create a customer profile in Customers first.</span>}
-        </label>
+          {!customersLoading && customers.length === 0 && <span className="mt-1 block font-normal text-amber-700">No clients found for this account. Refresh or check the Customers page account.</span>}
+          {!customersLoading && customers.some((customer) => customer._id.startsWith("local_")) && <span className="mt-1 block font-normal text-amber-700">A client marked “browser only” could not sync to the server and cannot be used for a sale yet.</span>}
+        </div>
         {lines.map((line, index) => (
           <div key={index} className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4">
             <label className="text-xs font-medium text-slate-600">Service

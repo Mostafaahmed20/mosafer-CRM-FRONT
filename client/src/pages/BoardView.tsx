@@ -2100,8 +2100,9 @@ export default function BoardView() {
         lists={lists.map((l) => ({ _id: l._id, title: l.title }))}
         members={board?.members || []}
         boardId={boardId || undefined}
-        onClientAccepted={async () => {
-          await handleUpdateCard({ salesStage: "Won", status: "Closed", accountingStatus: "Ready for accounting", dueComplete: true });
+        onClientAccepted={async (_customerId, orderId) => {
+          await handleUpdateCard({ salesStage: "Won" });
+          setLocation(`/orders?orderId=${encodeURIComponent(orderId)}`);
         }}
       />
 

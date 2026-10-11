@@ -3,60 +3,18 @@ import { useLocation } from "wouter";
 import SidebarRail from "@/components/SidebarRail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  AgencyContactRole,
-  CustomerContact,
-  CustomerDecisionRole,
-  CustomerProfile,
-  CustomerTag,
-  customerApi,
-} from "@/lib/api";
+import { CustomerProfile, customerApi } from "@/lib/api";
 import { getAppSettings } from "@/lib/appSettings";
 import { useAuth } from "@/contexts/AuthContext";
 import { Building2, Loader2, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
-
-const ROLE_OPTIONS: CustomerDecisionRole[] = [
-  "Group Admin",
-  "CEO",
-  "Manager",
-  "Decision Maker",
-  "Owner",
-  "Operations",
-];
-
-const TAG_OPTIONS: CustomerTag[] = ["VIP", "Risky", "Prepaid", "Blacklist Watch"];
-const CONTACT_ROLE_OPTIONS: AgencyContactRole[] = [
-  "CEO",
-  "Manager",
-  "Operations",
-  "Accounting",
-  "Sales",
-  "Reservations",
-  "Owner",
-  "Other",
-];
 
 type FormState = {
   agencyName: string;
   phone: string;
   country: string;
   language: string;
-  bookingValue: string;
-  location: string;
   email: string;
-  decisionRole: CustomerDecisionRole;
-  tags: CustomerTag[];
-  notes: string;
-  contacts: CustomerContact[];
-};
-
-type ContactDraft = {
-  name: string;
-  email: string;
-  role: AgencyContactRole;
-  phone: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -64,20 +22,7 @@ const EMPTY_FORM: FormState = {
   phone: "",
   country: "",
   language: "",
-  bookingValue: "",
-  location: "",
   email: "",
-  decisionRole: "Decision Maker",
-  tags: [],
-  notes: "",
-  contacts: [],
-};
-
-const EMPTY_CONTACT_DRAFT: ContactDraft = {
-  name: "",
-  email: "",
-  role: "Operations",
-  phone: "",
 };
 
 export default function CustomersWorkspace() {
@@ -89,7 +34,6 @@ export default function CustomersWorkspace() {
   const [searchQuery, setSearchQuery] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
-  const [contactDraft, setContactDraft] = useState<ContactDraft>(EMPTY_CONTACT_DRAFT);
 
   const isAdminUser = String((user as any)?.role || "").toLowerCase() === "admin";
   const customerRules = getAppSettings().customerRules;
@@ -120,12 +64,9 @@ export default function CustomersWorkspace() {
     return customers.filter((c) =>
       [
         c.agencyName,
-        c.location,
         c.email,
-        c.decisionRole,
-        c.notes || "",
-        ...(c.tags || []),
-        ...(c.contacts || []).flatMap((contact) => [contact.name, contact.email, contact.role, contact.phone || ""]),
+        c.phone || "",
+        c.country || "",
       ]
         .map((v) => String(v || "").toLowerCase())
         .some((v) => v.includes(q))
@@ -135,21 +76,17 @@ export default function CustomersWorkspace() {
   const resetForm = () => {
     setForm(EMPTY_FORM);
     setEditingCustomerId(null);
-    setContactDraft(EMPTY_CONTACT_DRAFT);
   };
 
   const validateAndMaybeWarnDuplicate = () => {
-    const agencyKey = form.agencyName.trim().toLowerCase();
     const emailKey = form.email.trim().toLowerCase();
     const duplicate = customers.find((c) => {
       if (editingCustomerId && c._id === editingCustomerId) return false;
-      const sameAgency = c.agencyName.trim().toLowerCase() === agencyKey;
-      const sameEmail = emailKey ? c.email.trim().toLowerCase() === emailKey : false;
-      return sameAgency || sameEmail;
+      const sameEmail = emailKey ? (c.email || "").trim().toLowerCase() === emailKey : false;
+      return sameEmail;
     });
     if (!duplicate) return true;
-    const duplicateByAgency = duplicate.agencyName.trim().toLowerCase() === agencyKey;
-    const message = duplicateByAgency ? "Agency name already exists" : "Email already exists";
+    const message = "Email already exists";
     if (customerRules.duplicateMode === "block") {
       toast.error(message);
       return false;
@@ -162,19 +99,7 @@ export default function CustomersWorkspace() {
     e.preventDefault();
 
     if (!form.agencyName.trim()) {
-      toast.error("Agency name is required");
-      return;
-    }
-    if (customerRules.requireLocation && !form.location.trim()) {
-      toast.error("Location is required");
-      return;
-    }
-    if (customerRules.requireEmail && !form.email.trim()) {
-      toast.error("Email is required");
-      return;
-    }
-    if (customerRules.requireDecisionRole && !form.decisionRole.trim()) {
-      toast.error("Decision role is required");
+      toast.error("Client name is required");
       return;
     }
     if (!validateAndMaybeWarnDuplicate()) return;
@@ -189,13 +114,7 @@ export default function CustomersWorkspace() {
       phone: form.phone,
       country: form.country,
       language: form.language,
-      bookingValue: form.bookingValue,
-      location: form.location,
-      email: form.email,
-      decisionRole: form.decisionRole,
-      tags: form.tags,
-      notes: form.notes,
-      contacts: form.contacts,
+      email: form.email.trim(),
     };
 
     setIsSaving(true);
@@ -203,15 +122,15 @@ export default function CustomersWorkspace() {
       if (editingCustomerId) {
         const updated = await customerApi.update(editingCustomerId, payload);
         setCustomers((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
-        toast.success("Agency profile updated");
+        toast.success("Client details updated");
       } else {
         const created = await customerApi.create(payload);
         setCustomers((prev) => [created, ...prev.filter((c) => c._id !== created._id)]);
-        toast.success("Agency profile added");
+        toast.success("Client added");
       }
       resetForm();
     } catch (error: any) {
-      toast.error(error?.message || "Failed to save agency profile");
+      toast.error(error?.message || "Failed to save client");
     } finally {
       setIsSaving(false);
     }
@@ -243,47 +162,8 @@ export default function CustomersWorkspace() {
       phone: customer.phone || "",
       country: customer.country || "",
       language: customer.language || "",
-      bookingValue: customer.bookingValue || "",
-      location: customer.location,
-      email: customer.email,
-      decisionRole: customer.decisionRole,
-      tags: customer.tags || [],
-      notes: customer.notes || "",
-      contacts: customer.contacts || [],
+      email: customer.email || "",
     });
-    setContactDraft(EMPTY_CONTACT_DRAFT);
-  };
-
-  const toggleTag = (tag: CustomerTag) => {
-    setForm((prev) => ({
-      ...prev,
-      tags: prev.tags.includes(tag) ? prev.tags.filter((t) => t !== tag) : [...prev.tags, tag],
-    }));
-  };
-
-  const addContact = () => {
-    if (!contactDraft.name.trim() || !contactDraft.email.trim()) {
-      toast.error("Contact name and email are required");
-      return;
-    }
-    const duplicate = form.contacts.find((c) => c.email.trim().toLowerCase() === contactDraft.email.trim().toLowerCase());
-    if (duplicate) {
-      toast.error("Contact email already added");
-      return;
-    }
-    const nextContact: CustomerContact = {
-      id: `ct_${Math.random().toString(36).slice(2, 10)}`,
-      name: contactDraft.name.trim(),
-      email: contactDraft.email.trim().toLowerCase(),
-      role: contactDraft.role,
-      phone: contactDraft.phone.trim() || undefined,
-    };
-    setForm((prev) => ({ ...prev, contacts: [...prev.contacts, nextContact] }));
-    setContactDraft(EMPTY_CONTACT_DRAFT);
-  };
-
-  const removeContact = (id: string) => {
-    setForm((prev) => ({ ...prev, contacts: prev.contacts.filter((c) => c.id !== id) }));
   };
 
   return (
@@ -329,124 +209,15 @@ export default function CustomersWorkspace() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-2">Language</label>
-                  <Input placeholder="Arabic" value={form.language} onChange={(e) => setForm((p) => ({ ...p, language: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-2">Booking value</label>
-                  <Input placeholder="Value in SAR" value={form.bookingValue} onChange={(e) => setForm((p) => ({ ...p, bookingValue: e.target.value }))} />
+                  <Input placeholder="Arabic or English" value={form.language} onChange={(e) => setForm((p) => ({ ...p, language: e.target.value }))} />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-2">Location</label>
-                  <Input value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-2">Agency email</label>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Email (optional)</label>
                   <Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2">Primary decision role</label>
-                <select
-                  value={form.decisionRole}
-                  onChange={(e) => setForm((p) => ({ ...p, decisionRole: e.target.value as CustomerDecisionRole }))}
-                  className="w-full h-10 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm"
-                >
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2">Customer tags</label>
-                <div className="flex flex-wrap gap-2">
-                  {TAG_OPTIONS.map((tag) => {
-                    const active = form.tags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTag(tag)}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition ${
-                          active
-                            ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100"
-                            : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
-                        }`}
-                      >
-                        {tag}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Additional contacts</div>
-                  <div className="text-xs text-slate-500">{form.contacts.length} contact(s)</div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Input
-                    placeholder="Contact name"
-                    value={contactDraft.name}
-                    onChange={(e) => setContactDraft((p) => ({ ...p, name: e.target.value }))}
-                  />
-                  <Input
-                    type="email"
-                    placeholder="contact@agency.com"
-                    value={contactDraft.email}
-                    onChange={(e) => setContactDraft((p) => ({ ...p, email: e.target.value }))}
-                  />
-                  <select
-                    value={contactDraft.role}
-                    onChange={(e) => setContactDraft((p) => ({ ...p, role: e.target.value as AgencyContactRole }))}
-                    className="h-10 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm"
-                  >
-                    {CONTACT_ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
-                  <Input
-                    placeholder="Phone (optional)"
-                    value={contactDraft.phone}
-                    onChange={(e) => setContactDraft((p) => ({ ...p, phone: e.target.value }))}
-                  />
-                </div>
-                <Button type="button" variant="outline" onClick={addContact}>
-                  Add Contact
-                </Button>
-
-                {form.contacts.length > 0 && (
-                  <div className="space-y-2">
-                    {form.contacts.map((contact) => (
-                      <div key={contact.id} className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium">{contact.name} <span className="text-slate-500">({contact.role})</span></div>
-                          <div className="text-xs text-slate-500 break-all">{contact.email}</div>
-                          {contact.phone && <div className="text-xs text-slate-500">{contact.phone}</div>}
-                        </div>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => removeContact(contact.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2">Agency notes</label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                  placeholder="Payment behavior, preferences, escalation notes, blacklist warnings, etc."
-                  className="min-h-24"
-                />
               </div>
 
               <div className="flex gap-2">
@@ -461,7 +232,7 @@ export default function CustomersWorkspace() {
               </div>
 
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Rules come from Settings {"->"} Customer Rules. Backend should enforce duplicates and permissions for real security.
+                Only the client name is required. Phone, country, language, and email are optional.
               </p>
             </form>
 
@@ -498,7 +269,7 @@ export default function CustomersWorkspace() {
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold truncate">{customer.agencyName}</div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {customer.location || "-"} | {customer.decisionRole} | {customer.email || "-"}
+                            {[customer.phone, customer.country, customer.language, customer.email].filter(Boolean).join(" · ") || "No extra details"}
                           </div>
 
                           {customer.tags?.length > 0 && (

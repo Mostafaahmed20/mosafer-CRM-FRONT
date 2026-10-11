@@ -18,9 +18,9 @@ const SETTINGS_KEY = "crm_app_settings_v1";
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   customerRules: {
     duplicateMode: "block",
-    requireEmail: true,
-    requireLocation: true,
-    requireDecisionRole: true,
+    requireEmail: false,
+    requireLocation: false,
+    requireDecisionRole: false,
     adminOnlyEdit: true,
     adminOnlyDelete: true,
   },

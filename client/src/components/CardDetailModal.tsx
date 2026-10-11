@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +52,6 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { QuotationEditor } from "./QuotationEditor";
-import { TravelServicesPanel } from "./TravelServicesPanel";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
@@ -100,7 +99,7 @@ interface CardDetailModalProps {
   lists?: ListOption[];
   members?: BoardMember[];
   boardId?: string;
-  onClientAccepted?: (customerId: string) => Promise<void>;
+  onClientAccepted?: (customerId: string, orderId: string) => Promise<void>;
 }
 
 export function CardDetailModal({
@@ -127,6 +126,10 @@ export function CardDetailModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requester, setRequester] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [adultCount, setAdultCount] = useState(0);
+  const [childCount, setChildCount] = useState(0);
   const [bookingRef, setBookingRef] = useState("");
   const [agencyName, setAgencyName] = useState("");
   const [hotelName, setHotelName] = useState("");
@@ -214,6 +217,10 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
       setTitle(card.title);
       setDescription(card.description || "");
       setRequester(card.requester || "");
+      setCustomerPhone(card.customerPhone || "");
+      setCustomerEmail(card.customerEmail || "");
+      setAdultCount(Number(card.adultCount || 0));
+      setChildCount(Number(card.childCount || 0));
       setBookingRef(card.bookingRef || "");
       setAgencyName(card.agencyName || "");
       setHotelName(card.hotelName || "");
@@ -349,6 +356,10 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
   const isTicketDirty = card ? (
     requester !== (card.requester || "") ||
+    customerPhone !== (card.customerPhone || "") ||
+    customerEmail !== (card.customerEmail || "") ||
+    adultCount !== Number(card.adultCount || 0) ||
+    childCount !== Number(card.childCount || 0) ||
     bookingRef !== (card.bookingRef || "") ||
     agencyName !== (card.agencyName || "") ||
     hotelName !== (card.hotelName || "") ||
@@ -440,6 +451,11 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
     try {
       await handleTicketFieldUpdate({
         requester,
+        customerPhone,
+        customerEmail,
+        adultCount,
+        childCount,
+        travelerCount: adultCount + childCount,
         bookingRef,
         agencyName,
         hotelName,
@@ -1033,36 +1049,21 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
   const bookingGroups = [
     {
-      title: "Guest & Booking",
+      title: "Client & Request",
       items: [
         { label: "Requester", value: formatRequesterDisplay(requester) },
-        { label: "Booking Ref", value: bookingRef || "-" },
-        { label: "Agency", value: agencyName || "-" },
-        { label: "Hotel", value: hotelName || "-" },
-        { label: "Supplier", value: supplierName || "-" },
+        { label: "Phone", value: customerPhone || "-" },
+        { label: "Travel dates", value: travelDates || "-" },
+        { label: "Request", value: leadNeed || "-" },
       ],
     },
     {
       title: "Workflow",
       items: [
-        { label: "Type", value: ticketType || "-" },
-        { label: "Status", value: ticketStatus || "-" },
-        { label: "Priority", value: ticketPriority || "-" },
-        { label: "Group", value: ticketGroup || "-" },
+        { label: "Stage", value: salesStage || "New" },
         { label: "Agent", value: assignedAgentName },
         { label: "Source", value: ticketSource || "-" },
-        { label: "Payment", value: paymentStatus || "-" },
-      ],
-    },
-    {
-      title: "Dates & Confirmations",
-      items: [
-        { label: "Check-in", value: checkInDate || "-" },
-        { label: "Check-out", value: checkOutDate || "-" },
-        { label: "Arrival", value: arrivalDate || "-" },
-        { label: "Supplier Conf.", value: supplierConfirmationNumber || "-" },
-        { label: "Hotel Conf.", value: hotelConfirmationNumber || "-" },
-        { label: "Voucher", value: voucherNumber || "-" },
+        { label: "Follow-up", value: followUpAt || "-" },
       ],
     },
   ];
@@ -1119,6 +1120,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                         <span className="rounded-full bg-[#ECFDF5] px-3 py-1 text-[11px] font-semibold text-[#047857]">
                           {selectedMembers.length} member{selectedMembers.length === 1 ? "" : "s"}
                         </span>
+                        {card.reservationRef && <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-800">Reservation {card.reservationRef}</span>}
                       </div>
                       {isEditingTitle ? (
                         <Input
@@ -1396,6 +1398,7 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
 
           {isEditingTicketFields && (
             <div className="grid grid-cols-1 gap-3 rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4 md:grid-cols-2">
+              {card?.reservationRef && <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">Reservation reference: {card.reservationRef}</div>}
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Requester</label>
                 <Input
@@ -1406,25 +1409,20 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#64748B]">Booking Ref</label>
-                <Input
-                  value={bookingRef}
-                  onChange={(e) => setBookingRef(e.target.value)}
-                  placeholder="System booking reference"
-                  className="mt-1"
-                />
+                <label className="text-xs font-semibold text-[#64748B]">Client phone</label>
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone number" className="mt-1" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#64748B]">Agency</label>
-                <Input value={agencyName} onChange={(e) => setAgencyName(e.target.value)} className="mt-1" />
+                <label className="text-xs font-semibold text-[#64748B]">Client email</label>
+                <Input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Email address" className="mt-1" />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Hotel</label>
-                <Input value={hotelName} onChange={(e) => setHotelName(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Supplier</label>
-                <Input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className="mt-1" />
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs font-semibold text-[#64748B]">Adults
+                  <Input type="number" min="0" value={adultCount} onChange={(e) => setAdultCount(Math.max(0, Number(e.target.value) || 0))} className="mt-1" />
+                </label>
+                <label className="text-xs font-semibold text-[#64748B]">Children
+                  <Input type="number" min="0" value={childCount} onChange={(e) => setChildCount(Math.max(0, Number(e.target.value) || 0))} className="mt-1" />
+                </label>
               </div>
               <div>
                 <label className="text-xs font-semibold text-[#64748B]">Source</label>
@@ -1442,115 +1440,19 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
                       {["New", "Contacted", "Qualified", "Quoted", "Follow-up", "Won", "Lost"].map((option) => <option key={option}>{option}</option>)}
                     </select>
                   </label>
-                  <label className="text-xs font-semibold text-[#64748B]">Qualification
-                    <select value={qualificationStatus} onChange={(e) => setQualificationStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                      {["Unqualified", "Qualified", "Not a fit"].map((option) => <option key={option}>{option}</option>)}
-                    </select>
-                  </label>
                   <label className="text-xs font-semibold text-[#64748B]">What does the client need?
                     <Input value={leadNeed} onChange={(e) => setLeadNeed(e.target.value)} className="mt-1" placeholder="Destination, package, preferences" />
-                  </label>
-                  <label className="text-xs font-semibold text-[#64748B]">Budget
-                    <Input type="number" min="0" value={leadBudget} onChange={(e) => setLeadBudget(Math.max(0, Number(e.target.value || 0)))} className="mt-1" placeholder="0" />
                   </label>
                   <label className="text-xs font-semibold text-[#64748B]">Travel dates
                     <Input value={travelDates} onChange={(e) => setTravelDates(e.target.value)} className="mt-1" placeholder="e.g. 12-20 October" />
                   </label>
-                  <label className="text-xs font-semibold text-[#64748B]">Lost reason
-                    <Input value={lossReason} onChange={(e) => setLossReason(e.target.value)} className="mt-1" placeholder="Only needed for lost leads" />
-                  </label>
+                  {salesStage === "Lost" && <label className="text-xs font-semibold text-[#64748B]">Lost reason
+                    <Input value={lossReason} onChange={(e) => setLossReason(e.target.value)} className="mt-1" placeholder="Why was the offer lost?" />
+                  </label>}
                   <label className="text-xs font-semibold text-[#64748B]">Follow-up date and time
                     <Input type="datetime-local" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} className="mt-1" />
                   </label>
-                  <label className="text-xs font-semibold text-[#64748B]">Follow-up channel
-                    <select value={followUpChannel} onChange={(e) => setFollowUpChannel(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                      {["WhatsApp", "Email", "Phone", "Other"].map((option) => <option key={option}>{option}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-xs font-semibold text-[#64748B] md:col-span-2">Follow-up note
-                    <Input value={followUpNote} onChange={(e) => setFollowUpNote(e.target.value)} className="mt-1" placeholder="What should happen next?" />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-[#486581] md:col-span-2">
-                    <input type="checkbox" checked={followUpCompleted} onChange={(e) => setFollowUpCompleted(e.target.checked)} />
-                    Follow-up completed
-                  </label>
                 </div>
-              </div>
-              <div className="md:col-span-2 rounded-[18px] border border-[#D9E5F4] bg-white p-3">
-                <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748B]">Accounting handoff</div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="text-xs font-semibold text-[#64748B]">Accounting status
-                    <select value={accountingStatus} onChange={(e) => setAccountingStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                      {["Not ready", "Ready for accounting", "Sent to accounting", "Paid", "Closed"].map((option) => <option key={option}>{option}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-xs font-semibold text-[#64748B]">Invoice or accounting reference
-                    <Input value={accountingReference} onChange={(e) => setAccountingReference(e.target.value)} className="mt-1" placeholder="Invoice number" />
-                  </label>
-                  <label className="text-xs font-semibold text-[#64748B] md:col-span-2">Accounting notes
-                    <Input value={accountingNotes} onChange={(e) => setAccountingNotes(e.target.value)} className="mt-1" placeholder="Handoff details, payment terms, commission" />
-                  </label>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Type</label>
-                <select value={ticketType} onChange={(e) => setTicketType(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  {["Booking request", "Rate request", "Reconfirmation", "Amendment", "Cancellation", "Service request"].map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Status</label>
-                <select value={ticketStatus} onChange={(e) => setTicketStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  {TRAVEL_TICKET_STATUSES.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Priority</label>
-                <select value={ticketPriority} onChange={(e) => setTicketPriority(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  {["Urgent", "High", "Medium", "Low"].map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Group</label>
-                <Input value={ticketGroup} onChange={(e) => setTicketGroup(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Payment status</label>
-                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  {TRAVEL_PAYMENT_STATUSES.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Check-in</label>
-                <Input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Check-out</label>
-                <Input type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Arrival date</label>
-                <Input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Supplier confirmation no.</label>
-                <Input value={supplierConfirmationNumber} onChange={(e) => setSupplierConfirmationNumber(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Hotel confirmation no.</label>
-                <Input value={hotelConfirmationNumber} onChange={(e) => setHotelConfirmationNumber(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Voucher no.</label>
-                <Input value={voucherNumber} onChange={(e) => setVoucherNumber(e.target.value)} className="mt-1" />
               </div>
               <div className="md:col-span-2">
                 <label className="text-xs font-semibold text-[#64748B]">Agent</label>
@@ -1589,387 +1491,9 @@ const commentRef = useRef<HTMLTextAreaElement>(null);
           )}
         </div>
 
-        {/* Shift Handover */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-[#475569]">Shift Handover</h3>
-            <div className="flex items-center gap-2">
-              {!isEditingHandover && (
-                <Button size="sm" variant="outline" onClick={() => setIsEditingHandover(true)}>
-                  {hasHandoverDetails ? "Edit" : "Add"}
-                </Button>
-              )}
-            </div>
-          </div>
 
-          {!isEditingHandover && hasHandoverDetails && (
-            <div className="rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                <div><span className="font-semibold text-slate-500">Status:</span> {handoverStatus}</div>
-                <div>
-                  <span className="font-semibold text-slate-500">Next owner:</span>{" "}
-                  {safeMembers.find((m) => m.user._id === handoverNextOwner)?.user.username || "Unassigned"}
-                </div>
-                <div><span className="font-semibold text-slate-500">Pending:</span> {handoverPendingState}</div>
-                <div className="sm:col-span-2"><span className="font-semibold text-slate-500">Summary:</span> {handoverSummary || "-"}</div>
-                <div className="sm:col-span-2"><span className="font-semibold text-slate-500">Done in shift:</span> {handoverDone || "-"}</div>
-                <div className="sm:col-span-2"><span className="font-semibold text-slate-500">Pending details:</span> {handoverPending || "-"}</div>
-                <div className="sm:col-span-2"><span className="font-semibold text-slate-500">Blocker:</span> {handoverBlocker || "-"}</div>
-                <div className="sm:col-span-2"><span className="font-semibold text-slate-500">Next action:</span> {handoverNextAction || "-"}</div>
-                <div className="sm:col-span-2">
-                  <span className="font-semibold text-slate-500">Reminders:</span>{" "}
-                  {Number(card.handoverReminderCount || 0)} sent
-                  {card.handoverReminderSentAt
-                    ? ` - Last ${new Date(card.handoverReminderSentAt).toLocaleString()}`
-                    : " - Not sent yet"}
-                </div>
-              </div>
-            </div>
-          )}
+        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} agencyName={agencyName} customerEmail={customerEmail} customerPhone={customerPhone} existingNet={Number(card.netPaidToHotel || 0)} existingSelling={Number(card.sellToAgency || 0)} existingDescription={hotelName || card.title} existingSupplier={supplierName} existingCurrency={serviceOrders[0]?.currency || "USD"} onClientAccepted={onClientAccepted} />}
 
-          {!hasHandoverDetails && !isEditingHandover && (
-            <div className="rounded-[22px] border border-dashed border-[#C7D8EE] bg-white p-4 text-sm text-[#6B7C93]">
-              No handover details yet.
-            </div>
-          )}
-
-          {isEditingHandover && (
-            <div className="grid grid-cols-1 gap-3 rounded-[22px] border border-[#D9E5F4] bg-[#F8FBFF] p-4 md:grid-cols-2">
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Handover status</label>
-                <select value={handoverStatus} onChange={(e) => setHandoverStatus(e.target.value as any)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  {["Not set", "Resolved in shift", "Pending for next shift"].map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Next owner</label>
-                <select value={handoverNextOwner} onChange={(e) => setHandoverNextOwner(e.target.value)} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  <option value="">Unassigned</option>
-                  {safeMembers.map((m) =>
-                    m.user ? (
-                      <option key={m.user._id} value={m.user._id}>
-                        {m.user.username}
-                      </option>
-                    ) : null
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#64748B]">Pending</label>
-                <select value={handoverPendingState} onChange={(e) => setHandoverPendingState(e.target.value as "Yes" | "No")} className="mt-1 h-11 w-full rounded-2xl border border-[#D9E5F4] bg-white px-4 text-sm text-[#102A43]">
-                  <option value="No">No</option>
-                  <option value="Yes">Yes</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs font-semibold text-[#64748B]">Summary</label>
-                <Textarea value={handoverSummary} onChange={(e) => setHandoverSummary(e.target.value)} className="mt-1 min-h-[70px]" placeholder="Case summary for next shift" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs font-semibold text-[#64748B]">Done in shift</label>
-                <Textarea value={handoverDone} onChange={(e) => setHandoverDone(e.target.value)} className="mt-1 min-h-[70px]" placeholder="What was completed" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs font-semibold text-[#64748B]">Pending details</label>
-                <Textarea value={handoverPending} onChange={(e) => setHandoverPending(e.target.value)} className="mt-1 min-h-[70px]" placeholder="What is still pending" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs font-semibold text-[#64748B]">Blocker</label>
-                <Textarea value={handoverBlocker} onChange={(e) => setHandoverBlocker(e.target.value)} className="mt-1 min-h-[70px]" placeholder="Waiting reason/blocker" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs font-semibold text-[#64748B]">Next action</label>
-                <Textarea value={handoverNextAction} onChange={(e) => setHandoverNextAction(e.target.value)} className="mt-1 min-h-[70px]" placeholder="Exact next step" />
-              </div>
-              <div className="md:col-span-2 flex items-center justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    resetHandoverFromCard();
-                    setIsEditingHandover(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSaveHandover}
-                  disabled={!isHandoverDirty || isSavingHandover}
-                  className="rounded-2xl bg-[#2063E9] px-4 text-white hover:bg-[#164FC0]"
-                >
-                  {isSavingHandover ? "Saving..." : "Save Handover"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {boardId && card && <TravelServicesPanel boardId={boardId} requestId={card._id} />}
-        {boardId && card && <QuotationEditor boardId={boardId} requestId={card._id} onClientAccepted={onClientAccepted} />}
-
-        {/* Covering Services */}
-        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/60">
-          <div className="px-3 py-2.5 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="text-xs font-semibold text-[#334155]">Covering Services</h3>
-              <div className="text-[11px] text-[#64748B]">
-                {serviceTotals.lines} lines - Total {serviceTotalsLabel}
-              </div>
-              <div className="text-[11px] text-[#475569] mt-0.5">
-                Stage: {coveringStatus} {bookingRef ? `- Ref: ${bookingRef}` : ""}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleAddServiceOrder}
-                className="h-8"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowServiceOrders((prev) => !prev)}
-                className="h-8"
-              >
-                {showServiceOrders ? "Hide" : "Show"}
-              </Button>
-            </div>
-          </div>
-
-          {showServiceOrders && (
-            <div className="px-3 pb-3">
-              <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500">Net paid to hotel</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={netPaidToHotel}
-                      onChange={(e) => setNetPaidToHotel(Math.max(0, Number(e.target.value || 0)))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500">Selling to travel agency</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={sellToAgency}
-                      onChange={(e) => setSellToAgency(Math.max(0, Number(e.target.value || 0)))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500">Margin</label>
-                    <div className={`h-10 rounded-md border px-3 flex items-center text-sm font-semibold ${coveringMargin >= 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
-                      {coveringMargin.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-500">Use these two values for final covering financials.</div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => setShowCoveringBookingDetails((prev) => !prev)}
-                  >
-                    {showCoveringBookingDetails ? "Hide booking details" : "View booking details"}
-                  </Button>
-                </div>
-                {showCoveringBookingDetails && (
-                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-[12px]">
-                    <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
-                      <span className="font-semibold text-slate-600">Booking Ref:</span> {bookingRef || "-"}
-                    </div>
-                    <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
-                      <span className="font-semibold text-slate-600">Agency:</span> {agencyName || "-"}
-                    </div>
-                    <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
-                      <span className="font-semibold text-slate-600">Hotel:</span> {hotelName || "-"}
-                    </div>
-                    <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
-                      <span className="font-semibold text-slate-600">Supplier:</span> {supplierName || "-"}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <datalist id="covering-service-types">
-                {[
-                  "Laundry",
-                  "Extra meal",
-                  "City tax",
-                  "Airport transfer",
-                  "Late checkout",
-                  "Early check-in",
-                  "Mini bar",
-                  "Spa",
-                  "Other",
-                ].map((serviceType) => (
-                  <option key={serviceType} value={serviceType} />
-                ))}
-              </datalist>
-
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                {(["Requested", "Paid by VCC", "Invoiced to agency"] as const).map((stage) => (
-                  <Button
-                    key={stage}
-                    type="button"
-                    size="sm"
-                    variant={coveringStatus === stage ? "default" : "outline"}
-                    onClick={() => handleSetCoveringStage(stage)}
-                    className={coveringStatus === stage ? "bg-[#6366F1] hover:bg-[#4F46E5] text-white" : ""}
-                  >
-                    {stage}
-                  </Button>
-                ))}
-              </div>
-
-              {serviceOrders.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500 bg-white">
-                  No service orders yet.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {serviceOrders.map((order, index) => (
-                    <div key={order._id || index} className="rounded-lg border border-slate-200 p-3 bg-white">
-                      <div className="text-[11px] font-semibold text-slate-500 mb-2">Service line {index + 1}</div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div className="sm:col-span-2">
-                          <label className="text-[11px] font-semibold text-slate-500">Service type</label>
-                          <Input
-                            list="covering-service-types"
-                            value={order.service}
-                            onChange={(e) => handleServiceOrderChange(index, "service", e.target.value)}
-                            placeholder="e.g. Laundry, City tax"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-500">Qty</label>
-                          <Input
-                            type="number"
-                            value={order.quantity}
-                            onChange={(e) =>
-                              handleServiceOrderChange(index, "quantity", Math.max(1, Number(e.target.value || 1)))
-                            }
-                            min={1}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-500">Unit price</label>
-                          <Input
-                            type="number"
-                            value={order.price}
-                            onChange={(e) => handleServiceOrderChange(index, "price", Math.max(0, Number(e.target.value || 0)))}
-                            min={0}
-                            step="0.01"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-500">Currency</label>
-                          <Input
-                            value={order.currency}
-                            onChange={(e) => handleServiceOrderChange(index, "currency", e.target.value.toUpperCase())}
-                            placeholder="USD"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-500">Line total</label>
-                          <div className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 flex items-center text-sm font-semibold text-slate-700">
-                            {(Number(order.quantity || 0) * Number(order.price || 0)).toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-500">Service status</label>
-                          <select
-                            value={order.status}
-                            onChange={(e) => handleServiceOrderChange(index, "status", e.target.value as ServiceOrder["status"])}
-                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-                          >
-                            {["Requested", "In Progress", "Completed", "Cancelled"].map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-500">Payment</label>
-                          <select
-                            value={order.paymentStatus}
-                            onChange={(e) => handleServiceOrderChange(index, "paymentStatus", e.target.value as ServiceOrder["paymentStatus"])}
-                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-                          >
-                            {["Unpaid", "Partially paid", "Paid"].map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="text-[11px] font-semibold text-slate-500">Notes</label>
-                          <Input
-                            value={order.notes || ""}
-                            onChange={(e) => handleServiceOrderChange(index, "notes", e.target.value)}
-                            placeholder="Hotel quote note, invoice note, etc."
-                          />
-                        </div>
-                        <div className="sm:col-span-2 flex justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleRemoveServiceOrder(index)}
-                            className="text-red-600 hover:text-red-700"
-                            title="Delete service line"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setServiceOrders(card?.serviceOrders || []);
-                    setCoveringStatus((card?.coveringStatus as "Requested" | "Paid by VCC" | "Invoiced to agency") || "Requested");
-                    setNetPaidToHotel(Number(card?.netPaidToHotel || 0));
-                    setSellToAgency(Number(card?.sellToAgency || 0));
-                  }}
-                  disabled={!isServiceOrdersDirty && !isCoveringStatusDirty && !isCoveringAmountsDirty}
-                >
-                  Reset
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSaveServiceOrders}
-                  disabled={!isServiceOrdersDirty && !isCoveringStatusDirty && !isCoveringAmountsDirty}
-                  className="bg-[#6366F1] hover:bg-[#4F46E5] text-white"
-                >
-                  Save services
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Labels */}
         {labels.length > 0 && (

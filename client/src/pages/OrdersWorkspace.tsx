@@ -20,6 +20,7 @@ async function getApiError(response: Response, fallback: string) {
 type Order = {
   _id: string;
   orderNumber: string;
+  reservationRef?: string;
   status: string;
   accountingStatus?: "not_ready" | "sent" | "received" | "closed";
   accountingReference?: string;
@@ -79,6 +80,8 @@ type Fulfillment = {
   hotelConfirmationNumber?: string;
   supplierInvoiceReference?: string;
   supplierInvoiceAmount?: number;
+  supplierInvoiceCurrency?: string;
+  supplierInvoiceExchangeRateToOrderCurrency?: number;
   supplierInvoiceDueAt?: string;
   supplierInvoiceAttachments?: Array<{ _id?: string; name: string; url: string; type?: string; size?: number; uploadedAt?: string }>;
   supplierInvoiceSettlement?: { paid: number; outstanding: number; status: string } | null;
@@ -94,6 +97,8 @@ type FulfillmentDraft = Pick<Fulfillment, "supplierName" | "supplierReference" |
   orderItemId: string;
   supplierInvoiceReference: string;
   supplierInvoiceAmount: string;
+  supplierInvoiceCurrency: string;
+  supplierInvoiceExchangeRateToOrderCurrency: string;
   supplierInvoiceDueAt: string;
 };
 
@@ -106,6 +111,7 @@ type Payment = {
   status: string;
   paymentMethod?: string;
   paymentReference?: string;
+  accountantConfirmation?: { channel: "WhatsApp"; confirmedBy: string; confirmedAt: string; notes?: string };
   createdAt?: string;
   attachments?: Array<{ _id?: string; name: string; url: string; type?: string; size?: number; uploadedAt?: string }>;
 };
@@ -135,10 +141,7 @@ export default function OrdersWorkspace() {
   const [packageSummaries, setPackageSummaries] = useState<Record<string, OrderPackageSummary[]>>({});
   const [packageDrafts, setPackageDrafts] = useState<Record<string, PackageDraft>>({});
   const [travelers, setTravelers] = useState<Record<string, Traveler[]>>({});
-  const [customerTravelers, setCustomerTravelers] = useState<Record<string, Traveler[]>>({});
-  const [selectedCustomerTraveler, setSelectedCustomerTraveler] = useState<Record<string, string>>({});
   const [newTravelerDrafts, setNewTravelerDrafts] = useState<Record<string, { firstName: string; lastName: string }>>({});
-  const [showAddTraveler, setShowAddTraveler] = useState<Record<string, boolean>>({});
   const [accountingReadiness, setAccountingReadiness] = useState<Record<string, { ready: boolean; blockers: string[] }>>({});
   const [accountingReferenceDraft, setAccountingReferenceDraft] = useState("");
   const [packageFormOpen, setPackageFormOpen] = useState<Record<string, boolean>>({});
@@ -150,6 +153,8 @@ export default function OrdersWorkspace() {
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentFile, setPaymentFile] = useState<File | null>(null);
   const [paymentRequestKey, setPaymentRequestKey] = useState("");
+  const [paymentConfirmerName, setPaymentConfirmerName] = useState("");
+  const [paymentConfirmationNote, setPaymentConfirmationNote] = useState("");
   const [amendmentsByOrder, setAmendmentsByOrder] = useState<Record<string, Amendment[]>>({});
   const [amendmentReasonDraft, setAmendmentReasonDraft] = useState("");
   const [serviceDrafts, setServiceDrafts] = useState<Record<string, ServiceDraft[]>>({});
@@ -359,15 +364,13 @@ export default function OrdersWorkspace() {
       const response = await fetch(`${API_URL}/api/orders/${selectedOrder._id}/payments`, {
         method: "POST",
         headers: orderHeaders(),
-        body: JSON.stringify({ amount: Number(paymentAmount), currency: selectedOrder.currency, status: "posted", paymentMethod: "manual", paymentReference: paymentReference.trim(), idempotencyKey }),
+        body: JSON.stringify({ amount: Number(paymentAmount), currency: selectedOrder.currency, status: "pending", paymentMethod: "manual", paymentReference: paymentReference.trim(), idempotencyKey }),
       });
       if (!response.ok) throw await getApiError(response, "Could not record payment");
       const result = await response.json().catch(() => ({}));
       const savedPayment = result?.payment || result;
       if (result?.duplicate) await loadOrders();
-      else setOrders((current) => current.map((order) => order._id === selectedOrder._id
-        ? { ...order, amountPaid: order.amountPaid + Number(paymentAmount), balance: Math.max(0, order.balance - Number(paymentAmount)) }
-        : order));
+      else await loadPayments(selectedOrder._id);
       if (paymentFile && savedPayment?._id) {
         const formData = new FormData();
         formData.append("file", paymentFile);
@@ -384,15 +387,71 @@ export default function OrdersWorkspace() {
       } else if (paymentFile) {
         throw new Error("Payment was recorded, but no payment record was returned for the attachment. Retry with the same amount and reference.");
       }
+      if (paymentConfirmerName.trim() && savedPayment?._id) {
+        const confirmResponse = await fetch(`${API_URL}/api/orders/${selectedOrder._id}/payments/${savedPayment._id}/confirm-transfer`, {
+          method: "POST",
+          headers: orderHeaders(),
+          body: JSON.stringify({ accountantName: paymentConfirmerName.trim(), notes: paymentConfirmationNote.trim() }),
+        });
+        if (!confirmResponse.ok) throw await getApiError(confirmResponse, "Transfer saved but WhatsApp confirmation could not be recorded");
+      }
       setPaymentAmount("");
       setPaymentReference("");
       setPaymentFile(null);
       setPaymentRequestKey("");
+      setPaymentConfirmerName("");
+      setPaymentConfirmationNote("");
       await loadPayments(selectedOrder._id);
       await loadAccountingReadiness(selectedOrder._id);
-      toast.success("Payment recorded");
+      toast.success(paymentConfirmerName.trim() ? "Payment recorded and accountant confirmation saved" : "Payment recorded as pending verification");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not record payment. Retry safely to check the same payment.");
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
+  const confirmPaymentViaWhatsApp = async (paymentId: string) => {
+    if (!selectedOrder || !paymentConfirmerName.trim()) {
+      toast.error("Enter the accountant's name who confirmed the transfer on WhatsApp");
+      return;
+    }
+    try {
+      setActionSaving(true);
+      const response = await fetch(`${API_URL}/api/orders/${selectedOrder._id}/payments/${paymentId}/confirm-transfer`, {
+        method: "POST",
+        headers: orderHeaders(),
+        body: JSON.stringify({ accountantName: paymentConfirmerName.trim(), notes: paymentConfirmationNote.trim() }),
+      });
+      if (!response.ok) throw await getApiError(response, "Could not record transfer confirmation");
+      await Promise.all([loadPayments(selectedOrder._id), loadOrders(), loadAccountingReadiness(selectedOrder._id)]);
+      setPaymentConfirmerName("");
+      setPaymentConfirmationNote("");
+      toast.success("Accountant confirmation saved; the supplier booking step is now unlocked when fully paid");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record transfer confirmation");
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
+  const uploadPaymentProof = async (paymentId: string, file: File) => {
+    if (!selectedOrder) return;
+    try {
+      setActionSaving(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/api/orders/${selectedOrder._id}/payments/${paymentId}/attachments`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!response.ok) throw await getApiError(response, "Could not attach transfer proof");
+      await loadPayments(selectedOrder._id);
+      toast.success("Transfer proof attached");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not attach transfer proof");
     } finally {
       setActionSaving(false);
     }
@@ -482,6 +541,13 @@ export default function OrdersWorkspace() {
       toast.error("Enter an invoice amount before setting a due date");
       return;
     }
+    const orderCurrency = (orders.find((order) => order._id === orderId)?.currency || "USD").toUpperCase();
+    const invoiceCurrency = (draft.supplierInvoiceCurrency || orderCurrency).trim().toUpperCase();
+    const exchangeRate = Number(draft.supplierInvoiceExchangeRateToOrderCurrency);
+    if (invoiceAmount && invoiceCurrency !== orderCurrency && (!Number.isFinite(exchangeRate) || exchangeRate <= 0)) {
+      toast.error(`Enter the ${invoiceCurrency} to order currency exchange rate`);
+      return;
+    }
     if (!draft.orderItemId && draft.supplierInvoiceReference.trim()) {
       toast.error("Link an order service before entering an invoice reference");
       return;
@@ -500,6 +566,8 @@ export default function OrdersWorkspace() {
           orderItemId: draft.orderItemId || null,
           supplierInvoiceReference: draft.supplierInvoiceReference.trim(),
           supplierInvoiceAmount: invoiceAmount ? Number(invoiceAmount) : null,
+          supplierInvoiceCurrency: invoiceCurrency || orders.find((order) => order._id === orderId)?.currency || "USD",
+          supplierInvoiceExchangeRateToOrderCurrency: invoiceCurrency === orderCurrency ? 1 : exchangeRate,
           supplierInvoiceDueAt: draft.supplierInvoiceDueAt || null,
         }),
       });
@@ -532,6 +600,8 @@ export default function OrdersWorkspace() {
         hotelConfirmationNumber: item.hotelConfirmationNumber || "",
         supplierInvoiceReference: item.supplierInvoiceReference || "",
         supplierInvoiceAmount: item.supplierInvoiceAmount === undefined ? "" : String(item.supplierInvoiceAmount),
+        supplierInvoiceCurrency: item.supplierInvoiceCurrency || "",
+        supplierInvoiceExchangeRateToOrderCurrency: item.supplierInvoiceExchangeRateToOrderCurrency === undefined ? "" : String(item.supplierInvoiceExchangeRateToOrderCurrency),
         supplierInvoiceDueAt: item.supplierInvoiceDueAt ? item.supplierInvoiceDueAt.slice(0, 10) : "",
         serviceType: item.serviceType || "other",
         notes: item.notes || "",
@@ -618,19 +688,6 @@ export default function OrdersWorkspace() {
         ...previous,
         [order._id]: Array.isArray(travelerData) ? travelerData : [],
       }));
-    }
-
-    const customerId = typeof order.customerId === "string" ? order.customerId : order.customerId._id;
-    const customerTravelersResponse = await fetch(`${API_URL}/api/customers/${customerId}/travelers`, { headers });
-    if (customerTravelersResponse.ok) {
-      const customerTravelerData = await customerTravelersResponse.json();
-      setCustomerTravelers((previous) => ({
-        ...previous,
-        [order._id]: Array.isArray(customerTravelerData) ? customerTravelerData : [],
-      }));
-    } else {
-      const body = await customerTravelersResponse.json().catch(() => null);
-      toast.error(typeof body?.message === "string" ? body.message : "Could not load this customer's saved travelers");
     }
 
     if (summary?.packageId) {
@@ -761,70 +818,25 @@ export default function OrdersWorkspace() {
     }
   };
 
-  const addCustomerTravelerToOrder = async (order: Order) => {
-    const travelerId = selectedCustomerTraveler[order._id];
-    if (!travelerId) {
-      toast.error("Select a customer traveler first");
-      return;
-    }
-    try {
-      const response = await fetch(`${API_URL}/api/orders/${order._id}/travelers`, {
-        method: "POST",
-        headers: orderHeaders(),
-        body: JSON.stringify({ travelerId }),
-      });
-      if (!response.ok) throw await getApiError(response, "Could not add traveler to order");
-      const snapshot = await response.json();
-      setTravelers((previous) => ({
-        ...previous,
-        [order._id]: [snapshot, ...(previous[order._id] || [])],
-      }));
-      setPackageDrafts((previous) => {
-        const draft = previous[order._id];
-        return draft ? { ...previous, [order._id]: { ...draft, travelerIds: Array.from(new Set([...draft.travelerIds, snapshot._id])) } } : previous;
-      });
-      setSelectedCustomerTraveler((previous) => ({ ...previous, [order._id]: "" }));
-      await loadOrderPackageSummaries(order._id);
-      await loadAccountingReadiness(order._id);
-      toast.success("Traveler snapshot added to order");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not add traveler to order");
-    }
-  };
-
   const saveCustomerTraveler = async (order: Order) => {
     const draft = newTravelerDrafts[order._id] || { firstName: "", lastName: "" };
     if (!draft.firstName.trim() || !draft.lastName.trim()) {
       toast.error("Enter the traveler's first and last name");
       return;
     }
-    const customerId = typeof order.customerId === "string" ? order.customerId : order.customerId._id;
     try {
-      const response = await fetch(`${API_URL}/api/customers/${customerId}/travelers`, {
+      const response = await fetch(`${API_URL}/api/orders/${order._id}/travelers`, {
         method: "POST",
         headers: orderHeaders(),
         body: JSON.stringify({ firstName: draft.firstName.trim(), lastName: draft.lastName.trim() }),
       });
-      if (!response.ok) throw await getApiError(response, "Could not save customer traveler");
-      const traveler = await response.json();
-      const snapshotResponse = await fetch(`${API_URL}/api/orders/${order._id}/travelers`, {
-        method: "POST",
-        headers: orderHeaders(),
-        body: JSON.stringify({ travelerId: traveler._id }),
-      });
-      if (!snapshotResponse.ok) throw await getApiError(snapshotResponse, "Traveler was saved to the customer but could not be attached to this sale");
-      const snapshot = await snapshotResponse.json();
-      setCustomerTravelers((previous) => ({
-        ...previous,
-        [order._id]: [traveler, ...(previous[order._id] || [])],
-      }));
+      if (!response.ok) throw await getApiError(response, "Could not add traveler to this sale");
+      const snapshot = await response.json();
       setTravelers((previous) => ({ ...previous, [order._id]: [snapshot, ...(previous[order._id] || [])] }));
-      setSelectedCustomerTraveler((previous) => ({ ...previous, [order._id]: "" }));
       await loadOrderPackageSummaries(order._id);
       await loadAccountingReadiness(order._id);
       setNewTravelerDrafts((previous) => ({ ...previous, [order._id]: { firstName: "", lastName: "" } }));
-      setShowAddTraveler((previous) => ({ ...previous, [order._id]: false }));
-      toast.success("Traveler saved to this customer");
+      toast.success("Traveler added to this sale");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save customer traveler");
     }
@@ -1114,54 +1126,7 @@ export default function OrdersWorkspace() {
                                   })
                                 )}
                               </div>
-                              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2">
-                                <select
-                                  value={selectedCustomerTraveler[order._id] || ""}
-                                  onChange={(event) => setSelectedCustomerTraveler((previous) => ({ ...previous, [order._id]: event.target.value }))}
-                                  className="h-9 min-w-48 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700"
-                                >
-                                  <option value="">
-                                    {(customerTravelers[order._id] || []).length
-                                      ? "Choose a saved customer traveler"
-                                      : "No saved customer travelers"}
-                                  </option>
-                                  {(customerTravelers[order._id] || []).map((traveler) => (
-                                    <option key={traveler._id} value={traveler._id}>
-                                      {traveler.firstName} {traveler.lastName}
-                                    </option>
-                                  ))}
-                                </select>
-                                <Button type="button" size="sm" variant="outline" disabled={!canWorkflow("operations")} onClick={() => void addCustomerTravelerToOrder(order)}>
-                                  Add booking snapshot
-                                </Button>
-                              </div>
-                              {!(customerTravelers[order._id] || []).length && (
-                                <div className="text-xs text-slate-500">No saved travelers are linked to this customer yet.</div>
-                              )}
-                              {(showAddTraveler[order._id] || !(customerTravelers[order._id] || []).length) && (
-                                <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                                  <Input
-                                    value={newTravelerDrafts[order._id]?.firstName || ""}
-                                    onChange={(event) => setNewTravelerDrafts((previous) => ({ ...previous, [order._id]: { firstName: event.target.value, lastName: previous[order._id]?.lastName || "" } }))}
-                                    placeholder="First name"
-                                    className="h-9"
-                                  />
-                                  <Input
-                                    value={newTravelerDrafts[order._id]?.lastName || ""}
-                                    onChange={(event) => setNewTravelerDrafts((previous) => ({ ...previous, [order._id]: { firstName: previous[order._id]?.firstName || "", lastName: event.target.value } }))}
-                                    placeholder="Last name"
-                                    className="h-9"
-                                  />
-                                  <Button type="button" size="sm" variant="outline" disabled={!canWorkflow("operations")} onClick={() => void saveCustomerTraveler(order)}>
-                                    Save traveler
-                                  </Button>
-                                </div>
-                              )}
-                              {!!(customerTravelers[order._id] || []).length && !showAddTraveler[order._id] && (
-                                <Button type="button" size="sm" variant="ghost" disabled={!canWorkflow("operations")} className="h-7 px-2 text-xs" onClick={() => setShowAddTraveler((previous) => ({ ...previous, [order._id]: true }))}>
-                                  + Save another traveler
-                                </Button>
-                              )}
+
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
                                 <div className="text-xs font-medium text-slate-600">Services included in this sale</div>
                                 <div className="mt-2 space-y-1">
@@ -1233,6 +1198,7 @@ export default function OrdersWorkspace() {
                 <div className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">Order detail</div>
                 <h2 className="mt-1 text-xl font-semibold text-slate-900">{selectedOrder.orderNumber}</h2>
                 <div className="mt-1 text-sm text-slate-500">Customer {customerLabel(selectedOrder.customerId)} · {selectedOrder.currency}</div>
+                {selectedOrder.reservationRef && <div className="mt-1 text-sm font-semibold text-blue-700">Reservation Details · {selectedOrder.reservationRef}</div>}
               </div>
               <div className="flex items-center gap-2">
                 {selectedOrder.sourceCardId && selectedOrder.sourceBoardId && (
@@ -1246,12 +1212,19 @@ export default function OrdersWorkspace() {
             <div className="mt-4 border-b border-slate-100 pb-4">
               <div className="max-w-2xl rounded-xl border border-slate-200 p-3">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Record payment</div>
-                {canWorkflow("accounting") ? <div className="flex flex-wrap gap-2">
+                {canWorkflow("sales") || canWorkflow("accounting") ? <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
                   <Input type="number" min="0" value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentRequestKey(""); }} placeholder={`Amount in ${selectedOrder.currency}`} className="h-9 min-w-0 flex-1" />
                   <Input value={paymentReference} onChange={(event) => { setPaymentReference(event.target.value); setPaymentRequestKey(""); }} placeholder="Receipt/reference (optional)" className="h-9 min-w-0 flex-1" />
                   <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx" aria-label="Payment receipt attachment" className="h-9 min-w-0 flex-1 text-xs" onChange={(event) => setPaymentFile(event.target.files?.[0] || null)} />
-                  <Button type="button" size="sm" disabled={actionSaving} onClick={() => void recordPayment()}>Post</Button>
-                </div> : <div className="text-xs text-slate-500">Accounting access is required to post customer payments.</div>}
+                  <Button type="button" size="sm" disabled={actionSaving} onClick={() => void recordPayment()}>Record transfer</Button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input value={paymentConfirmerName} onChange={(event) => setPaymentConfirmerName(event.target.value)} placeholder="Accountant name after WhatsApp confirmation (optional)" className="h-9" />
+                    <Input value={paymentConfirmationNote} onChange={(event) => setPaymentConfirmationNote(event.target.value)} placeholder="Confirmation note (optional)" className="h-9" />
+                  </div>
+                  <div className="text-[11px] text-slate-500">Enter the accountant's name only after they confirm the transfer on WhatsApp. Unconfirmed transfers stay pending.</div>
+                </div> : <div className="text-xs text-slate-500">Sales access is required to record client transfers.</div>}
                 {paymentFile && <div className="mt-1 text-xs text-slate-500">Receipt: {paymentFile.name}</div>}
               </div>
             </div>
@@ -1313,7 +1286,7 @@ export default function OrdersWorkspace() {
                   </div>
                   <div className="mt-4 border-t border-slate-100 pt-3">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Payment history</div>
-                    {selectedPayments.length === 0 ? <div className="text-xs text-slate-500">No payments recorded.</div> : <div className="space-y-2">{selectedPayments.map((payment) => <div key={payment._id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs"><span className="text-slate-500">{payment.paymentMethod || "Payment"}{payment.status ? ` · ${payment.status}` : ""}{payment.paymentReference ? ` · ${payment.paymentReference}` : ""}{payment.createdAt ? ` · ${new Date(payment.createdAt).toLocaleDateString()}` : ""}</span><span className={payment.status === "refunded" ? "font-medium text-red-600" : "font-medium text-emerald-700"}>{payment.status === "refunded" ? "-" : ""}{Number(payment.amount || 0).toFixed(2)} {payment.currency}</span>{payment.attachments?.map((attachment, index) => <a key={attachment._id || `${payment._id}-${index}`} href={orderAttachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="w-full text-blue-700 underline">Receipt: {attachment.name}</a>)}</div>)}</div>}
+                    {selectedPayments.length === 0 ? <div className="text-xs text-slate-500">No payments recorded.</div> : <div className="space-y-2">{selectedPayments.map((payment) => <div key={payment._id} className="rounded-lg border border-slate-100 p-2 text-xs"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-slate-500">{payment.paymentMethod || "Payment"}{payment.status ? ` · ${payment.status}` : ""}{payment.paymentReference ? ` · ${payment.paymentReference}` : ""}{payment.createdAt ? ` · ${new Date(payment.createdAt).toLocaleDateString()}` : ""}</span><span className={payment.status === "refunded" ? "font-medium text-red-600" : "font-medium text-emerald-700"}>{payment.status === "refunded" ? "-" : ""}{Number(payment.amount || 0).toFixed(2)} {payment.currency}</span></div>{payment.accountantConfirmation && <div className="mt-1 text-emerald-700">WhatsApp confirmed by {payment.accountantConfirmation.confirmedBy} · {new Date(payment.accountantConfirmation.confirmedAt).toLocaleString()}</div>}{payment.attachments?.map((attachment, index) => <a key={attachment._id || `${payment._id}-${index}`} href={orderAttachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="mt-1 block text-blue-700 underline">Transfer proof: {attachment.name}</a>)}{(canWorkflow("sales") || canWorkflow("accounting")) && <label className="mt-2 inline-flex cursor-pointer items-center rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">{payment.attachments?.length ? "Attach another proof" : "Attach transfer screenshot"}<input type="file" accept="image/*,.pdf" className="sr-only" disabled={actionSaving} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPaymentProof(payment._id, file); event.target.value = ""; }} /></label>}{payment.status === "pending" && (canWorkflow("sales") || canWorkflow("accounting")) && <Button type="button" size="sm" variant="outline" className="ml-2 mt-2 h-8" disabled={actionSaving || !paymentConfirmerName.trim()} onClick={() => void confirmPaymentViaWhatsApp(payment._id)}>Confirm transfer via WhatsApp</Button>}</div>)}</div>}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
@@ -1390,48 +1363,25 @@ export default function OrdersWorkspace() {
                     ))}
                     {travelers[selectedOrder._id]?.length === 0 && <div className="text-xs text-amber-700">No traveler attached yet.</div>}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <select
-                      value={selectedCustomerTraveler[selectedOrder._id] || ""}
+                  <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <Input
+                      value={newTravelerDrafts[selectedOrder._id]?.firstName || ""}
+                      onChange={(event) => setNewTravelerDrafts((current) => ({ ...current, [selectedOrder._id]: { firstName: event.target.value, lastName: current[selectedOrder._id]?.lastName || "" } }))}
+                      placeholder="First name"
+                      className="h-9"
                       disabled={!canManageTravelers}
-                      onChange={(event) => setSelectedCustomerTraveler((current) => ({ ...current, [selectedOrder._id]: event.target.value }))}
-                      className="h-9 min-w-48 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700"
-                    >
-                      <option value="">{customerTravelers[selectedOrder._id]?.length ? "Choose a traveler" : "No saved travelers"}</option>
-                      {(customerTravelers[selectedOrder._id] || []).filter((traveler) => !(travelers[selectedOrder._id] || []).some((attached) => attached.travelerId === traveler._id)).map((traveler) => (
-                        <option key={traveler._id} value={traveler._id}>{traveler.firstName} {traveler.lastName}</option>
-                      ))}
-                    </select>
-                    <Button type="button" size="sm" variant="outline" disabled={!canManageTravelers || !selectedCustomerTraveler[selectedOrder._id]} onClick={() => void addCustomerTravelerToOrder(selectedOrder)}>
+                    />
+                    <Input
+                      value={newTravelerDrafts[selectedOrder._id]?.lastName || ""}
+                      onChange={(event) => setNewTravelerDrafts((current) => ({ ...current, [selectedOrder._id]: { firstName: current[selectedOrder._id]?.firstName || "", lastName: event.target.value } }))}
+                      placeholder="Last name"
+                      className="h-9"
+                      disabled={!canManageTravelers}
+                    />
+                    <Button type="button" size="sm" variant="outline" disabled={!canManageTravelers} onClick={() => void saveCustomerTraveler(selectedOrder)}>
                       Add traveler
                     </Button>
                   </div>
-                  {(showAddTraveler[selectedOrder._id] || !(customerTravelers[selectedOrder._id] || []).length) ? (
-                    <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
-                      <Input
-                        value={newTravelerDrafts[selectedOrder._id]?.firstName || ""}
-                        onChange={(event) => setNewTravelerDrafts((current) => ({ ...current, [selectedOrder._id]: { firstName: event.target.value, lastName: current[selectedOrder._id]?.lastName || "" } }))}
-                        placeholder="First name"
-                        className="h-9"
-                        disabled={!canManageTravelers}
-                      />
-                      <Input
-                        value={newTravelerDrafts[selectedOrder._id]?.lastName || ""}
-                        onChange={(event) => setNewTravelerDrafts((current) => ({ ...current, [selectedOrder._id]: { firstName: current[selectedOrder._id]?.firstName || "", lastName: event.target.value } }))}
-                        placeholder="Last name"
-                        className="h-9"
-                        disabled={!canManageTravelers}
-                      />
-                      <Button type="button" size="sm" variant="outline" disabled={!canManageTravelers} onClick={() => void saveCustomerTraveler(selectedOrder)}>
-                        Save & add
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2 text-xs" disabled={!canManageTravelers} onClick={() => setShowAddTraveler((current) => ({ ...current, [selectedOrder._id]: true }))}>
-                      + New traveler
-                    </Button>
-                  )}
-                  <div className="mt-2 text-xs text-slate-500">A traveler is required before accounting handoff.</div>
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-2">
@@ -1520,10 +1470,14 @@ export default function OrdersWorkspace() {
                               <Input value={fulfillmentDrafts[item._id]?.hotelConfirmationNumber || ""} placeholder="Hotel confirmation number (optional)" aria-label="Hotel confirmation number" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], hotelConfirmationNumber: event.target.value } }))} />
                               <Input value={fulfillmentDrafts[item._id]?.supplierInvoiceReference || ""} placeholder="Supplier invoice reference" aria-label="Supplier invoice reference" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceReference: event.target.value } }))} />
                               <Input type="number" min="0" step="0.01" value={fulfillmentDrafts[item._id]?.supplierInvoiceAmount || ""} placeholder={`Actual supplier cost (${selectedOrder.currency})`} aria-label={`Actual supplier cost in ${selectedOrder.currency}`} className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceAmount: event.target.value } }))} />
+                              <select value={fulfillmentDrafts[item._id]?.supplierInvoiceCurrency || selectedOrder.currency} aria-label="Supplier invoice currency" className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceCurrency: event.target.value } }))}>
+                                {Array.from(new Set([selectedOrder.currency.toUpperCase(), "USD", "SAR"])).map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                              </select>
+                              {(fulfillmentDrafts[item._id]?.supplierInvoiceCurrency || selectedOrder.currency).toUpperCase() !== selectedOrder.currency.toUpperCase() && <Input type="number" min="0.000001" step="0.000001" value={fulfillmentDrafts[item._id]?.supplierInvoiceExchangeRateToOrderCurrency || ""} placeholder={`1 ${fulfillmentDrafts[item._id]?.supplierInvoiceCurrency} = ? ${selectedOrder.currency}`} aria-label={`Exchange rate from ${fulfillmentDrafts[item._id]?.supplierInvoiceCurrency} to ${selectedOrder.currency}`} className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceExchangeRateToOrderCurrency: event.target.value } }))} />}
                               <Input type="date" value={fulfillmentDrafts[item._id]?.supplierInvoiceDueAt || ""} aria-label="Supplier invoice due date" className="h-8" onChange={(event) => setFulfillmentDrafts((drafts) => ({ ...drafts, [item._id]: { ...drafts[item._id], supplierInvoiceDueAt: event.target.value } }))} />
                               <div className="sm:col-span-2 rounded-md border border-slate-200 bg-white p-2">
                                 <div className="mb-1 text-xs font-medium text-slate-600">Supplier invoice attachment</div>
-                                <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx" aria-label="Attach supplier invoice" className="h-9 text-xs" disabled={actionSaving || (!canWorkflow("operations") && !canWorkflow("accounting"))} onChange={(event) => {
+                                <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx" aria-label="Attach supplier invoice" className="h-9 text-xs" disabled={actionSaving || (!canWorkflow("sales") && !canWorkflow("operations") && !canWorkflow("accounting"))} onChange={(event) => {
                                   const file = event.target.files?.[0];
                                   if (file) void uploadSupplierInvoice(selectedOrder._id, item._id, file);
                                   event.target.value = "";
@@ -1539,10 +1493,11 @@ export default function OrdersWorkspace() {
                           {item.orderItemId && (item.supplierInvoiceReference || item.supplierInvoiceAmount !== undefined) && (
                             <div className="mt-2 text-xs text-slate-500">
                               {item.supplierInvoiceReference ? `Invoice ${item.supplierInvoiceReference}` : ""}
-                              {item.supplierInvoiceAmount !== undefined ? ` · Actual cost before tax ${Number(item.supplierInvoiceAmount).toFixed(2)} ${selectedOrder.currency}` : ""}
+                              {item.supplierInvoiceAmount !== undefined ? ` · Actual cost before tax ${Number(item.supplierInvoiceAmount).toFixed(2)} ${item.supplierInvoiceCurrency || selectedOrder.currency}${item.supplierInvoiceCurrency && item.supplierInvoiceCurrency !== selectedOrder.currency ? ` · ${Number(item.supplierInvoiceExchangeRateToOrderCurrency || 0).toFixed(6)} ${selectedOrder.currency} per ${item.supplierInvoiceCurrency}` : ""}` : ""}
                             </div>
                           )}
                           {item.supplierInvoiceAmount !== undefined && (() => {
+                            const invoiceCurrency = item.supplierInvoiceCurrency || selectedOrder.currency;
                             const paid = item.supplierInvoiceSettlement?.paid ?? (item.supplierPayments || []).reduce((total, payment) => total + Number(payment.amount || 0), 0);
                             const outstanding = item.supplierInvoiceSettlement?.outstanding ?? Math.max(0, item.supplierInvoiceAmount - paid);
                             const settlementStatus = item.supplierInvoiceSettlement?.status ?? (outstanding === 0 ? "paid" : paid > 0 ? "partially_paid" : "unpaid");
@@ -1553,7 +1508,7 @@ export default function OrdersWorkspace() {
                                     Invoice settlement · {settlementStatus.replaceAll("_", " ")}
                                     {item.supplierInvoiceDueAt ? ` · Due ${new Date(item.supplierInvoiceDueAt).toLocaleDateString(undefined, { timeZone: "UTC" })}` : ""}
                                   </span>
-                                  <span className={settlementStatus === "overdue" ? "font-medium text-red-700" : "text-slate-500"}>Paid {paid.toFixed(2)} · Due {outstanding.toFixed(2)} {selectedOrder.currency}</span>
+                                  <span className={settlementStatus === "overdue" ? "font-medium text-red-700" : "text-slate-500"}>Paid {paid.toFixed(2)} · Due {outstanding.toFixed(2)} {invoiceCurrency}</span>
                                 </div>
                                 {outstanding > 0 && (
                                   <div className="mt-2 flex gap-2">
@@ -1589,7 +1544,7 @@ export default function OrdersWorkspace() {
                                     {item.supplierPayments.map((payment) => (
                                       <div key={payment._id} className="flex justify-between gap-2 text-[11px] text-slate-500">
                                         <span>{payment.paymentMethod}{payment.paymentReference ? ` · ${payment.paymentReference}` : ""} · {new Date(payment.paidAt).toLocaleDateString()}</span>
-                                        <span className="font-medium text-slate-700">{Number(payment.amount).toFixed(2)} {selectedOrder.currency}</span>
+                                        <span className="font-medium text-slate-700">{Number(payment.amount).toFixed(2)} {invoiceCurrency}</span>
                                       </div>
                                     ))}
                                   </div>

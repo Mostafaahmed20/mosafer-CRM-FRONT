@@ -55,9 +55,11 @@ export function TrelloList({
   const [requestAgency, setRequestAgency] = useState("");
   const [requestCustomerId, setRequestCustomerId] = useState("");
   const [requestPhone, setRequestPhone] = useState("");
+  const [requestEmail, setRequestEmail] = useState("");
   const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
   const [requestDestination, setRequestDestination] = useState("");
-  const [requestTravelers, setRequestTravelers] = useState("");
+  const [requestAdults, setRequestAdults] = useState("1");
+  const [requestChildren, setRequestChildren] = useState("0");
   const [requestServices, setRequestServices] = useState<("Flight" | "Hotel" | "Tour" | "Transfer" | "Package" | "Other")[]>([]);
   const [requestSource, setRequestSource] = useState("Email");
   const [requestType, setRequestType] = useState("Booking request");
@@ -96,8 +98,10 @@ export function TrelloList({
     setRequestAgency("");
     setRequestCustomerId("");
     setRequestPhone("");
+    setRequestEmail("");
     setRequestDestination("");
-    setRequestTravelers("");
+    setRequestAdults("1");
+    setRequestChildren("0");
     setRequestServices([]);
     setRequestSource("Email");
     setRequestType("Booking request");
@@ -115,8 +119,12 @@ export function TrelloList({
         agencyName: requestAgency.trim(),
         customerProfileId: requestCustomerId && !requestCustomerId.startsWith("local_") ? requestCustomerId : undefined,
         customerPhone: requestPhone.trim(),
+        customerEmail: requestEmail.trim(),
+        preferredLanguage: "English",
         destination: requestDestination.trim(),
-        travelerCount: requestTravelers ? Number(requestTravelers) : 0,
+        adultCount: Number(requestAdults || 0),
+        childCount: Number(requestChildren || 0),
+        travelerCount: Number(requestAdults || 0) + Number(requestChildren || 0),
         travelServices: requestServices,
         source: requestSource,
         type: requestType,
@@ -334,6 +342,14 @@ export function TrelloList({
                       aria-label="Customer phone number"
                       className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
                     />
+                    <Input
+                      type="email"
+                      value={requestEmail}
+                      onChange={(e) => setRequestEmail(e.target.value)}
+                      placeholder="Customer email (optional)"
+                      aria-label="Customer email"
+                      className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                    />
                   </div>
 
                   <div>
@@ -360,18 +376,29 @@ export function TrelloList({
                         className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">
-                        Travelers
-                      </label>
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">Adults</label>
                       <Input
                         type="number"
-                        min="1"
-                        value={requestTravelers}
-                        onChange={(e) => setRequestTravelers(e.target.value)}
-                        placeholder="Number of travelers"
+                        min="0"
+                        value={requestAdults}
+                        onChange={(e) => setRequestAdults(e.target.value)}
+                        placeholder="Adults"
                         className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
                       />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">Children</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={requestChildren}
+                        onChange={(e) => setRequestChildren(e.target.value)}
+                        placeholder="Children"
+                        className="mt-2 h-12 rounded-2xl border-[#D9E5F4] bg-white px-4 shadow-none"
+                      />
+                    </div>
                     </div>
                   </div>
 
@@ -528,7 +555,7 @@ export function TrelloList({
                     </div>
                     <div className="flex items-start justify-between gap-4">
                       <span className="text-[#829AB1]">Travelers</span>
-                      <span className="text-right font-medium text-[#102A43]">{requestTravelers || "Not set"}</span>
+                      <span className="text-right font-medium text-[#102A43]">{Number(requestAdults || 0) + Number(requestChildren || 0)}</span>
                     </div>
                     <div className="flex items-start justify-between gap-4">
                       <span className="text-[#829AB1]">Check-in</span>

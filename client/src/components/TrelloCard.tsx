@@ -52,6 +52,7 @@ export function TrelloCard({
   const priority = card.priority || "Medium";
   const requester = card.requester || "Unknown requester";
   const agencyName = card.agencyName?.trim();
+  const reservationRef = card.reservationRef?.trim();
   const bookingRef = card.bookingRef?.trim();
   const hotelName = card.hotelName?.trim();
   const supplierConf = card.supplierConfirmationNumber?.trim();
@@ -152,6 +153,7 @@ export function TrelloCard({
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="ticket-status">{status}</span>
               <span className={`ticket-priority ${priorityColor}`}>{priority}</span>
+              {reservationRef && <span className="ticket-booking-chip">Reservation {reservationRef}</span>}
               {bookingRef && <span className="ticket-booking-chip">Ref {bookingRef}</span>}
             </div>
             <p className="ticket-title line-clamp-2">{card.title}</p>

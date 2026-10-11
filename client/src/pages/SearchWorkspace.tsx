@@ -3,9 +3,9 @@ import { useLocation } from "wouter";
 import SidebarRail from "@/components/SidebarRail";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { boardApi, Board, Card, List } from "@/lib/api";
+import { boardApi, Board, Card, List, ReservationLookupResult, reservationApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Search, FolderKanban, Ticket, ArrowRight } from "lucide-react";
+import { Loader2, Search, FolderKanban, Ticket, ArrowRight, Hash } from "lucide-react";
 import { toast } from "sonner";
 
 type SearchResult = {
@@ -25,6 +25,25 @@ export default function SearchWorkspace() {
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") || "");
   const [scope, setScope] = useState<"all" | "tickets" | "boards">("all");
+  const [reservationResult, setReservationResult] = useState<ReservationLookupResult | null>(null);
+  const [reservationLoading, setReservationLoading] = useState(false);
+
+  const findReservation = async () => {
+    const reference = query.trim();
+    if (!/^\d{4,12}$/.test(reference)) {
+      toast.error("Enter the numeric reservation reference");
+      return;
+    }
+    setReservationLoading(true);
+    setReservationResult(null);
+    try {
+      setReservationResult(await reservationApi.lookup(reference));
+    } catch (error: any) {
+      toast.error(error?.message || "Reservation not found");
+    } finally {
+      setReservationLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -106,16 +125,21 @@ export default function SearchWorkspace() {
                   Search boards, queues, and tickets from one place. Use this to jump directly into the right workspace.
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px] lg:w-[520px]">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-[680px] lg:grid-cols-[minmax(0,1fr)_auto_160px]">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#829AB1]" />
                   <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter" && /^\d{4,12}$/.test(query.trim())) void findReservation(); }}
                     placeholder="Search tickets, booking refs, requester, board..."
                     className="h-12 rounded-2xl border-[#D9E5F4] bg-[#FBFDFF] pl-11 text-[#102A43] shadow-none"
                   />
                 </div>
+                <Button variant="outline" onClick={() => void findReservation()} disabled={reservationLoading} className="h-12 rounded-2xl border-[#D9E5F4]">
+                  {reservationLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Hash className="mr-2 h-4 w-4" />}
+                  Find reservation
+                </Button>
                 <select
                   value={scope}
                   onChange={(e) => setScope(e.target.value as "all" | "tickets" | "boards")}
@@ -143,6 +167,26 @@ export default function SearchWorkspace() {
               </div>
             </div>
           </div>
+
+          {reservationResult && (
+            <section className="rounded-[28px] border border-[#D9E5F4] bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)] sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E8EEF6] pb-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#829AB1]">Reservation Details</div>
+                  <h2 className="mt-1 text-2xl font-bold text-[#102A43]">{reservationResult.reservationRef}</h2>
+                </div>
+                <div className="text-sm text-[#6B7C93]">{reservationResult.workspace ? `${reservationResult.workspace.boardTitle} · ${reservationResult.workspace.listTitle}` : "Reservation record"}</div>
+              </div>
+              {reservationResult.lead ? (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div><div className="text-xs text-[#829AB1]">Client / inquiry</div><div className="mt-1 font-semibold text-[#102A43]">{reservationResult.lead.customerName || reservationResult.lead.title}</div><div className="mt-1 text-sm text-[#6B7C93]">{reservationResult.lead.customerPhone || "No phone"}</div><div className="text-sm text-[#6B7C93]">{reservationResult.lead.customerEmail || "No email"}</div></div>
+                  <div><div className="text-xs text-[#829AB1]">Trip</div><div className="mt-1 font-semibold text-[#102A43]">{reservationResult.lead.destination || "Destination not set"}</div><div className="mt-1 text-sm text-[#6B7C93]">{reservationResult.lead.travelDates || "Dates not set"}</div><div className="text-sm text-[#6B7C93]">{reservationResult.lead.adultCount} adults · {reservationResult.lead.childCount} children</div></div>
+                  <div><div className="text-xs text-[#829AB1]">Services and stage</div><div className="mt-1 font-semibold text-[#102A43]">{reservationResult.lead.travelServices.join(", ") || "Services not set"}</div><div className="mt-1 text-sm text-[#6B7C93]">{reservationResult.lead.salesStage} · {reservationResult.lead.status}</div><div className="text-sm text-[#6B7C93]">Agent: {reservationResult.lead.agent?.username || "Unassigned"}</div></div>
+                  {reservationResult.order && <div><div className="text-xs text-[#829AB1]">Sale · {reservationResult.order.currency}</div><div className="mt-1 text-sm text-[#102A43]">Selling: {reservationResult.order.customerTotal.toFixed(2)}</div><div className="text-sm text-[#102A43]">Cost: {reservationResult.order.supplierCost.toFixed(2)}</div><div className="text-sm font-semibold text-emerald-700">Profit: {reservationResult.order.grossMargin.toFixed(2)}</div><div className="text-sm text-[#6B7C93]">{reservationResult.order.accountingStatus}</div></div>}
+                </div>
+              ) : <p className="mt-4 text-sm text-[#6B7C93]">No lead details are attached to this reservation yet.</p>}
+            </section>
+          )}
 
           {isLoading ? (
             <div className="rounded-[28px] border border-[#D9E5F4] bg-white p-8 text-sm text-[#6B7C93] shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
