@@ -34,6 +34,7 @@ type Order = {
   grossMargin: number;
   amountPaid: number;
   balance: number;
+  paymentSummary?: { paid: number; refunded: number; pending: number; hasPayments: boolean };
   createdAt?: string;
   updatedAt?: string;
   items?: Array<Record<string, unknown>>;
@@ -295,7 +296,7 @@ export default function OrdersWorkspace() {
   const filteredOrders = orders.filter((order) => {
     const items = Array.isArray(order.items) ? order.items : [];
     const hasProduct = (productType: string) => items.some((item) => item.productType === productType);
-    const hasPayment = order.amountPaid > 0 || order.balance < order.customerTotal;
+    const hasPayment = order.amountPaid > 0 || order.balance < order.customerTotal || Boolean(order.paymentSummary?.hasPayments);
     const matchesView = activeView === "all"
       || (activeView === "flight" && hasProduct("flight"))
       || (activeView === "hotel" && hasProduct("hotel"))
