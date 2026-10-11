@@ -20,6 +20,9 @@ export default defineConfig({
     port: 3000,
     strictPort: false,
     host: true,
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS
+      ? process.env.VITE_ALLOWED_HOSTS.split(",").map((host) => host.trim()).filter(Boolean)
+      : undefined,
     proxy: {
       "/api": {
         target: "http://localhost:6001",
